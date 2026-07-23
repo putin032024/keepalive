@@ -18,8 +18,8 @@ KeepAlive_LOGOS_DEFAULT_GENERATOR = internal
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
-SUBPROJECTS += prefs
-include $(THEOS_MAKE_PATH)/aggregate.mk
+# Prefs tắt trên CI (Xcode SDK không có Preferences.framework private)
+# Bật/tắt bằng hold icon → Bật KeepAlive
 
 after-install::
 	install.exec "sbreload || killall -9 SpringBoard"
