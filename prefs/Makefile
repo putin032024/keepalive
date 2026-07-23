@@ -1,12 +1,6 @@
 TARGET := iphone:clang:latest:14.0
-ARCHS = arm64 arm64e
-
-ifeq ($(SCHEME),rootful)
-else ifeq ($(SCHEME),roothide)
-  THEOS_PACKAGE_SCHEME = roothide
-else
-  THEOS_PACKAGE_SCHEME ?= rootless
-endif
+ARCHS = arm64
+THEOS_PACKAGE_SCHEME = rootless
 
 include $(THEOS)/makefiles/common.mk
 

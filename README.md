@@ -14,10 +14,13 @@
 
 ## Build
 
+Chỉ **1 bản rootless** (Dopamine / RootHide đều cài được):
+
 ```bash
-make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
+make package FINALPACKAGE=1
 ```
+
+GitHub Actions → artifact **`KeepAlive-rootless`** → tải file `.deb`.
 
 ## Source
 
@@ -25,4 +28,4 @@ make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
 |------|------|
 | `Tweak.x` | Immortal + ép popup (cùng file) |
 | `KAConfig.*` | List app immortal |
-| `prefs/` | Chỉ bật/tắt cả tweak |
+| `prefs/` | Bật/tắt tweak |

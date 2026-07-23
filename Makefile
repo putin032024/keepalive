@@ -1,13 +1,7 @@
 TARGET := iphone:clang:latest:14.0
-ARCHS = arm64 arm64e
+ARCHS = arm64
 INSTALL_TARGET_PROCESSES = SpringBoard
-
-ifeq ($(SCHEME),rootful)
-else ifeq ($(SCHEME),roothide)
-  THEOS_PACKAGE_SCHEME = roothide
-else
-  THEOS_PACKAGE_SCHEME ?= rootless
-endif
+THEOS_PACKAGE_SCHEME = rootless
 
 include $(THEOS)/makefiles/common.mk
 
@@ -21,6 +15,7 @@ KeepAlive_LOGOS_DEFAULT_GENERATOR = internal
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
+# Prefs optional: bỏ SUBPROJECTS nếu CI fail prefs
 SUBPROJECTS += prefs
 include $(THEOS_MAKE_PATH)/aggregate.mk
 

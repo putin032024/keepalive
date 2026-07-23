@@ -1,89 +1,49 @@
-name: Build KeepAlive
+# 1 job: rootless .deb — Dopamine + RootHide (cài rootless được)
+name: Build
 
 on:
   push:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
-  release:
-    types: [published]
 
 jobs:
-  build-rootless:
-    name: Rootless
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-      - uses: beerpiss/theos-action@v1
-      - run: |
-          make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-          mkdir -p dist
-          for f in packages/*.deb; do
-            [ -f "$f" ] || continue
-            cp -f "$f" "dist/keepalive-rootless-$(basename "$f")"
-          done
-          ls -la dist/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: keepalive-rootless
-          path: dist/*.deb
-          if-no-files-found: error
-
-  build-rootful:
-    name: Rootful
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-      - uses: beerpiss/theos-action@v1
-      - run: |
-          make clean || true
-          sed -i '' 's/iphoneos-arm64/iphoneos-arm/g' control
-          make package FINALPACKAGE=1 SCHEME=rootful
-          mkdir -p dist
-          for f in packages/*.deb; do
-            [ -f "$f" ] || continue
-            cp -f "$f" "dist/keepalive-rootful-$(basename "$f")"
-          done
-          ls -la dist/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: keepalive-rootful
-          path: dist/*.deb
-          if-no-files-found: error
-
-  build-roothide:
-    name: RootHide
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-      - uses: beerpiss/theos-action@v1
-      - run: |
-          make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide || true
-          mkdir -p dist
-          for f in packages/*.deb; do
-            [ -f "$f" ] || continue
-            cp -f "$f" "dist/keepalive-roothide-$(basename "$f")"
-          done
-          ls -la dist/ || true
-      - uses: actions/upload-artifact@v4
-        with:
-          name: keepalive-roothide
-          path: dist/*.deb
-          if-no-files-found: warn
-
-  release:
-    needs: [build-rootless, build-rootful]
-    if: github.event_name == 'release'
+  build:
+    name: Build rootless deb
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Theos
+        uses: beerpiss/theos-action@v1
         with:
-          path: artifacts
-          merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*.deb
+          cache: true
+
+      - name: Install deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq perl curl unzip
+
+      - name: Build package (rootless)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          THEOS: ${{ github.workspace }}/theos
+        run: |
+          set -e
+          export PATH="$THEOS/bin:$PATH"
+          echo "THEOS=$THEOS"
+          ls -la "$THEOS" || true
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless -j$(nproc)
+          echo "=== packages ==="
+          ls -la packages/
+          mkdir -p dist
+          cp -f packages/*.deb dist/
+          ls -la dist/
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeepAlive-rootless
+          path: packages/*.deb
+          if-no-files-found: error
