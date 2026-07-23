@@ -181,14 +181,14 @@ static NSString *KAReqBundle(id req) {
     if (!req) return nil;
     @try {
         if ([req respondsToSelector:@selector(sectionIdentifier)]) {
-            NSString *s = [req sectionIdentifier];
-            if (s.length) return s;
+            NSString *s = ((id (*)(id, SEL))objc_msgSend)(req, @selector(sectionIdentifier));
+            if ([s isKindOfClass:[NSString class]] && s.length) return s;
         }
         if ([req respondsToSelector:@selector(bulletin)]) {
-            id b = [req bulletin];
-            if ([b respondsToSelector:@selector(sectionID)]) {
-                NSString *s = [b sectionID];
-                if (s.length) return s;
+            id b = ((id (*)(id, SEL))objc_msgSend)(req, @selector(bulletin));
+            if (b && [b respondsToSelector:@selector(sectionID)]) {
+                NSString *s = ((id (*)(id, SEL))objc_msgSend)(b, @selector(sectionID));
+                if ([s isKindOfClass:[NSString class]] && s.length) return s;
             }
         }
     } @catch (__unused id e) {}
