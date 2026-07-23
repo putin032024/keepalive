@@ -1,5 +1,5 @@
 TARGET := iphone:clang:14.5:14.0
-ARCHS = arm64
+ARCHS = arm64 arm64e
 THEOS_PACKAGE_SCHEME = rootless
 
 include $(THEOS)/makefiles/common.mk
@@ -11,7 +11,7 @@ KeepAlivePrefs_INSTALL_PATH = /Library/PreferenceBundles
 KeepAlivePrefs_FRAMEWORKS = UIKit
 KeepAlivePrefs_PRIVATE_FRAMEWORKS = Preferences
 KeepAlivePrefs_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
-KeepAlivePrefs_ARCHS = arm64
+KeepAlivePrefs_ARCHS = arm64 arm64e
 
 include $(THEOS_MAKE_PATH)/bundle.mk
 
