@@ -10,7 +10,7 @@
 			<key>label</key>
 			<string>KeepAlive</string>
 			<key>footerText</key>
-			<string>v1.5: giữ app bằng silent audio (KHÔNG fake foreground) để còn banner hệ thống. Hold icon → Bật KeepAlive → mở app 1 lần → về Home. RootHide: Patcher → Sileo → respring. Hao pin hơn một chút.</string>
+			<string>Zalo ĐỔI BUNDLE không có APNs khi kill. KeepAlive: vuốt nhầm → tự mở lại NGAY (vài giây). Hold Zalo2 → Bật KeepAlive. Zalo gốc (bundle chuẩn) không cần bật. RootHide: Patcher → respring.</string>
 		</dict>
 		<dict>
 			<key>cell</key>

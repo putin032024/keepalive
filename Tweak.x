@@ -172,31 +172,56 @@ static NSMutableDictionary *KALastWake(void) {
     return d;
 }
 
-// Mở app nền (cố suspended — ít giật UI hơn open full)
+// Mở lại app — ưu tiên nhanh khi bị vuốt kill (miss notif lúc chết)
 static void KAOpenApp(NSString *bundle, NSString *reason) {
     if (!bundle.length) return;
     if ([KAPendingSet() containsObject:bundle]) return;
     [KAPendingSet() addObject:bundle];
     NSLog(@"[KeepAlive] open %@ (%@)", bundle, reason ?: @"?");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+
+    // dead = mở NGAY (vuốt nhầm); soft-wake = delay nhẹ
+    BOOL urgent = [reason isEqualToString:@"dead"] || [reason isEqualToString:@"exit"];
+    int64_t delayNs = urgent ? (int64_t)(0.15 * NSEC_PER_SEC) : (int64_t)(1.0 * NSEC_PER_SEC);
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delayNs),
                    dispatch_get_main_queue(), ^{
         [KAPendingSet() removeObject:bundle];
         if (![[KAConfig shared] isImmortal:bundle]) return;
-        // options: activate suspended / background (private keys, iOS khác nhau)
-        NSDictionary *opts = @{
+
+        SBApplication *cur = [[%c(SBApplicationController) sharedInstance]
+                              applicationWithBundleIdentifier:bundle];
+        if (!urgent && cur.processState != nil) return;
+
+        // Thử background trước; nếu fail vẫn open thường
+        NSDictionary *bgOpts = @{
             @"LSOpenApplicationOptionKeyActivateSuspended" : @YES,
             @"__ActivateSuspended" : @YES,
             @"LSOpenApplicationOptionKeyForBackgroundFetch" : @YES,
-            @"UIApplicationLaunchOptionsFromBackgroundKey" : @YES,
         };
         [[%c(FBSSystemService) sharedService]
-            openApplication:bundle options:opts withResult:nil];
+            openApplication:bundle options:bgOpts withResult:nil];
+
+        // double-tap: 0.8s sau vẫn chết thì open full (đảm bảo sống lại)
+        if (urgent) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                if (![[KAConfig shared] isImmortal:bundle]) return;
+                SBApplication *a2 = [[%c(SBApplicationController) sharedInstance]
+                                     applicationWithBundleIdentifier:bundle];
+                if (a2.processState != nil) return;
+                NSLog(@"[KeepAlive] retry full open %@", bundle);
+                [[%c(FBSSystemService) sharedService]
+                    openApplication:bundle options:nil withResult:nil];
+                [[KAConfig shared] refreshIcon:bundle];
+            });
+        }
+
         [[KAConfig shared] refreshIcon:bundle];
         KALastWake()[bundle] = @([[NSDate date] timeIntervalSince1970]);
     });
 }
 
-// Process chết hẳn (chấm vàng)
+// Process chết hẳn (chấm vàng / vuốt kill)
 static void KARelaunchIfDead(NSString *bundle) {
     if (!bundle.length) return;
     KAConfig *cfg = [KAConfig shared];
@@ -315,10 +340,10 @@ static void KAWatchdogTick(void) {
     NSString *bid = self.bundleIdentifier;
     %orig;
     [[KAConfig shared] refreshIcon:bid];
-    // Jetsam / kill → tự mở lại nếu vẫn immortal
+    // Vuốt kill / jetsam → mở LẠI NGAY (đây là cách duy nhất khi không có APNs)
     if ([[KAConfig shared] isImmortal:bid]) {
-        NSLog(@"[KeepAlive] %@ exited, will relaunch", bid);
-        KARelaunchIfDead(bid);
+        NSLog(@"[KeepAlive] %@ EXIT — instant relaunch", bid);
+        KAOpenApp(bid, @"exit");
     }
 }
 %end
@@ -395,11 +420,12 @@ static void KAWatchdogTick(void) {
 %hook SpringBoard
 - (void)applicationDidFinishLaunching:(id)app {
     %orig;
-    NSLog(@"[KeepAlive] SB ready — hybrid v1.7 (scene+audio+relaunch+softwake)");
+    NSLog(@"[KeepAlive] SB ready — kill=instant relaunch (no APNs for renamed bundle)");
     dispatch_async(dispatch_get_main_queue(), ^{
-        [NSTimer scheduledTimerWithTimeInterval:30.0 repeats:YES
+        // Watchdog dày: vuốt nhầm → vài giây là sống lại
+        [NSTimer scheduledTimerWithTimeInterval:8.0 repeats:YES
             block:^(__unused NSTimer *t) { KAWatchdogTick(); }];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ KAWatchdogTick(); });
     });
 }
