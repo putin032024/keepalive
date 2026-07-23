@@ -1,8 +1,8 @@
 Package: com.local.keepalive
 Name: KeepAlive
-Version: 2.0.0
+Version: 2.1.0
 Architecture: iphoneos-arm64
-Description: Dual-IPA Zalo2 - ~4h keep-alive, green/red name status, relaunch. RootHide Patcher.
+Description: Fix sound-only - no scene freeze, local banner on badge. ~4h dual-IPA. RootHide Patcher.
 Maintainer: putin032024
 Author: putin032024
 Section: Tweaks

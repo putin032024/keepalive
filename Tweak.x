@@ -1,6 +1,6 @@
-// KeepAlive v2.0 — Zalo2 (đổi bundle) dual-IPA mode
-// Mục tiêu: sống ~4 tiếng; 🟢 = đang sống; 🔴 = đã chết (mở lại app)
-// Scene freeze + silent audio + relaunch + soft-wake ~45p
+// KeepAlive v2.1 — Zalo2 dual-IPA
+// 🟢/🔴 status; ~4h via audio+soft-wake (KHÔNG scene-freeze → hết chỉ-tiếng)
+// Badge tăng → bắn LOCAL notification (popup banner)
 
 #import "KAConfig.h"
 #import "Headers.h"
@@ -262,25 +262,7 @@ static void KAWatchdogTick(void) {
     KARefreshAllIcons(); // cập nhật 🟢/🔴
 }
 
-// === Immortalizer-style: chặn deactivate scene (giữ sống lâu hơn audio-only) ===
-%hook FBScene
-- (void)updateSettings:(id)arg1 withTransitionContext:(id)arg2 completion:(id)arg3 {
-    FBProcess *p = self.clientProcess;
-    if (p && [[KAConfig shared] isImmortal:p.bundleIdentifier] && arg2 == nil) {
-        [[KAConfig shared] refreshIcon:p.bundleIdentifier];
-        return;
-    }
-    %orig;
-}
-%end
-
-%hook UIMutableApplicationSceneSettings
-- (void)setDeactivationReasons:(unsigned long long)arg1 {
-    if (arg1 != 0 && [KAConfig shared].enabled && [KAConfig shared].immortalIDs.count > 0)
-        return;
-    %orig;
-}
-%end
+// KHÔNG scene-freeze: freeze = Zalo chỉ kêu, không system popup
 
 %hook SBIconView
 // Không dùng hourglass/chấm vàng — dùng 🟢/🔴 trên tên (rõ hơn)
@@ -450,7 +432,7 @@ static void KAWatchdogTick(void) {
 
 %end // SpringBoardCore
 
-#pragma mark - IN APP: audio + force willPresent banner
+#pragma mark - IN APP: audio + force willPresent + LOCAL BANNER khi badge tăng
 
 %group InApp
 
@@ -461,6 +443,8 @@ static NSMutableSet *KASwizzled(void) {
     return s;
 }
 static void (*KAOrigWP)(id, SEL, id, id, void (^)(NSUInteger)) = NULL;
+static NSTimeInterval gLastLocalBanner;
+
 static void KAHookedWP(id self, SEL _cmd, UNUserNotificationCenter *c,
                        UNNotification *n, void (^completion)(NSUInteger)) {
     void (^wrap)(NSUInteger) = ^(NSUInteger o) {
@@ -482,6 +466,35 @@ static void KASwizzle(id delegate) {
     [KASwizzled() addObject:name];
 }
 
+// Zalo chỉ kêu + tăng badge → tự bắn system banner
+static void KAPostLocalBanner(NSString *body) {
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (now - gLastLocalBanner < 1.2) return; // chống spam
+    gLastLocalBanner = now;
+
+    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    [center requestAuthorizationWithOptions:
+        (UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
+        completionHandler:^(__unused BOOL g, __unused NSError *e) {}];
+
+    UNMutableNotificationContent *content = [UNMutableNotificationContent new];
+    NSString *name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+    if (!name.length)
+        name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+    content.title = name.length ? name : @"Zalo";
+    content.body = body.length ? body : @"Bạn có tin nhắn mới";
+    content.sound = [UNNotificationSound defaultSound];
+
+    UNTimeIntervalNotificationTrigger *tr =
+        [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:0.15 repeats:NO];
+    NSString *uid = [[NSUUID UUID] UUIDString];
+    UNNotificationRequest *req =
+        [UNNotificationRequest requestWithIdentifier:uid content:content trigger:tr];
+    [center addNotificationRequest:req withCompletionHandler:^(__unused NSError *err) {
+        NSLog(@"[KeepAlive] local banner posted");
+    }];
+}
+
 %hook UNUserNotificationCenter
 - (void)setDelegate:(id)d {
     KASwizzle(d);
@@ -498,6 +511,16 @@ static void KASwizzle(id delegate) {
 - (void)setDelegate:(id)delegate {
     %orig;
     KAStartIfNeeded();
+}
+
+- (void)setApplicationIconBadgeNumber:(NSInteger)n {
+    NSInteger old = [self applicationIconBadgeNumber];
+    %orig;
+    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
+    if (![[KAConfig shared] isImmortal:me]) return;
+    if (n > old && n > 0) {
+        KAPostLocalBanner([NSString stringWithFormat:@"(%ld) tin nhắn mới", (long)n]);
+    }
 }
 %end
 

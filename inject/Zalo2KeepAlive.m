@@ -1,9 +1,5 @@
-// Zalo2KeepAlive — dylib TIÊM THẲNG vào Zalo đổi bundle (TrollFools / insert_dylib)
-// Không cần tweak SpringBoard, không hold icon, không Settings.
-// Luôn bật khi app load: silent audio + background task + ép willPresent banner.
-//
-// LƯU Ý: Vuốt kill = process chết = dylib chết. Không tự mở lại app
-// (cần SpringBoard/daemon mới relaunch được). Cứ để app trong đa nhiệm.
+// Zalo2KeepAlive inject — silent audio + LOCAL BANNER khi badge tăng
+// (fix lỗi chỉ tiếng, không popup)
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -12,7 +8,6 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-// Badge|Sound|Alert|List|Banner
 #define Z2_PRESENT (1u | 2u | 4u | 8u | 16u)
 
 static AVAudioPlayer *gPlayer;
@@ -20,12 +15,11 @@ static UIBackgroundTaskIdentifier gBg;
 static BOOL gBgInit;
 static NSTimer *gTimer;
 static BOOL gStarted;
+static NSTimeInterval gLastBanner;
+static void (*Z2OrigSetBadge)(id, SEL, NSInteger);
 
 static void Z2EnsureBg(void) {
-    if (!gBgInit) {
-        gBg = UIBackgroundTaskInvalid;
-        gBgInit = YES;
-    }
+    if (!gBgInit) { gBg = UIBackgroundTaskInvalid; gBgInit = YES; }
 }
 
 static NSData *Z2SilentWav(void) {
@@ -66,9 +60,7 @@ static void Z2BeginBg(void) {
     UIApplication *app = [UIApplication sharedApplication];
     if (!app) return;
     Z2EndBg();
-    gBg = [app beginBackgroundTaskWithName:@"Zalo2KeepAlive" expirationHandler:^{
-        Z2BeginBg();
-    }];
+    gBg = [app beginBackgroundTaskWithName:@"Zalo2KeepAlive" expirationHandler:^{ Z2BeginBg(); }];
 }
 
 static void Z2StartAudio(void) {
@@ -76,8 +68,7 @@ static void Z2StartAudio(void) {
         NSError *err = nil;
         AVAudioSession *s = [AVAudioSession sharedInstance];
         [s setCategory:AVAudioSessionCategoryPlayback
-           withOptions:AVAudioSessionCategoryOptionMixWithOthers
-                 error:&err];
+           withOptions:AVAudioSessionCategoryOptionMixWithOthers error:&err];
         [s setActive:YES error:&err];
         if (!gPlayer) {
             gPlayer = [[AVAudioPlayer alloc] initWithData:Z2SilentWav() error:&err];
@@ -92,47 +83,57 @@ static void Z2StartAudio(void) {
     } @catch (__unused NSException *e) {}
 }
 
-static void Z2Tick(void) {
-    Z2StartAudio();
+static void Z2Tick(void) { Z2StartAudio(); }
+
+static void Z2PostBanner(NSString *body) {
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (now - gLastBanner < 1.2) return;
+    gLastBanner = now;
+
+    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    [center requestAuthorizationWithOptions:
+        (UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
+        completionHandler:^(__unused BOOL g, __unused NSError *e) {}];
+
+    UNMutableNotificationContent *c = [UNMutableNotificationContent new];
+    NSString *name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+    if (!name.length) name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+    c.title = name.length ? name : @"Zalo";
+    c.body = body.length ? body : @"Bạn có tin nhắn mới";
+    c.sound = [UNNotificationSound defaultSound];
+
+    UNTimeIntervalNotificationTrigger *tr =
+        [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:0.15 repeats:NO];
+    UNNotificationRequest *req = [UNNotificationRequest
+        requestWithIdentifier:[[NSUUID UUID] UUIDString] content:c trigger:tr];
+    [center addNotificationRequest:req withCompletionHandler:nil];
+    NSLog(@"[Zalo2KeepAlive] local banner");
 }
 
 static void Z2Start(void) {
-    if (gStarted) {
-        Z2Tick();
-        return;
-    }
+    if (gStarted) { Z2Tick(); return; }
     gStarted = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
         Z2Tick();
         if (!gTimer) {
-            gTimer = [NSTimer timerWithTimeInterval:10.0 repeats:YES
+            gTimer = [NSTimer timerWithTimeInterval:8.0 repeats:YES
                 block:^(__unused NSTimer *t) { Z2Tick(); }];
             [[NSRunLoop mainRunLoop] addTimer:gTimer forMode:NSRunLoopCommonModes];
         }
         [[NSNotificationCenter defaultCenter]
-            addObserverForName:AVAudioSessionInterruptionNotification
-                        object:nil
-                         queue:[NSOperationQueue mainQueue]
-                    usingBlock:^(__unused NSNotification *n) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{ Z2Tick(); });
-        }];
+            addObserverForName:AVAudioSessionInterruptionNotification object:nil
+            queue:[NSOperationQueue mainQueue]
+            usingBlock:^(__unused NSNotification *n) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{ Z2Tick(); });
+            }];
         [[NSNotificationCenter defaultCenter]
-            addObserverForName:UIApplicationDidEnterBackgroundNotification
-                        object:nil
-                         queue:[NSOperationQueue mainQueue]
-                    usingBlock:^(__unused NSNotification *n) { Z2Tick(); }];
-        [[NSNotificationCenter defaultCenter]
-            addObserverForName:UIApplicationWillResignActiveNotification
-                        object:nil
-                         queue:[NSOperationQueue mainQueue]
-                    usingBlock:^(__unused NSNotification *n) { Z2Tick(); }];
-        NSLog(@"[Zalo2KeepAlive] started in %@",
-              [[NSBundle mainBundle] bundleIdentifier]);
+            addObserverForName:UIApplicationDidEnterBackgroundNotification object:nil
+            queue:[NSOperationQueue mainQueue]
+            usingBlock:^(__unused NSNotification *n) { Z2Tick(); }];
+        NSLog(@"[Zalo2KeepAlive] started %@", [[NSBundle mainBundle] bundleIdentifier]);
     });
 }
-
-#pragma mark - Force willPresent banners
 
 static NSMutableSet *Z2Swizzled(void) {
     static NSMutableSet *s;
@@ -140,9 +141,7 @@ static NSMutableSet *Z2Swizzled(void) {
     dispatch_once(&once, ^{ s = [NSMutableSet new]; });
     return s;
 }
-
 static void (*Z2OrigWP)(id, SEL, id, id, void (^)(NSUInteger)) = NULL;
-
 static void Z2HookedWP(id self, SEL _cmd, UNUserNotificationCenter *c,
                        UNNotification *n, void (^completion)(NSUInteger)) {
     void (^wrap)(NSUInteger) = ^(NSUInteger o) {
@@ -151,7 +150,6 @@ static void Z2HookedWP(id self, SEL _cmd, UNUserNotificationCenter *c,
     if (Z2OrigWP) Z2OrigWP(self, _cmd, c, n, wrap);
     else if (completion) completion(Z2_PRESENT);
 }
-
 static void Z2SwizzleDelegate(id delegate) {
     if (!delegate) return;
     Class cls = object_getClass(delegate);
@@ -165,28 +163,38 @@ static void Z2SwizzleDelegate(id delegate) {
     [Z2Swizzled() addObject:name];
 }
 
-static void (*Z2OrigSetDelegate)(id, SEL, id) = NULL;
-static void Z2HookedSetDelegate(id self, SEL _cmd, id delegate) {
-    if (Z2OrigSetDelegate) Z2OrigSetDelegate(self, _cmd, delegate);
-    Z2Start();
-    Z2SwizzleDelegate(delegate);
+static void Z2HookedSetBadge(id self, SEL _cmd, NSInteger n) {
+    NSInteger old = [self applicationIconBadgeNumber];
+    if (Z2OrigSetBadge) Z2OrigSetBadge(self, _cmd, n);
+    else ((void (*)(id, SEL, NSInteger))objc_msgSend)(self, @selector(setApplicationIconBadgeNumber:), n);
+    if (n > old && n > 0)
+        Z2PostBanner([NSString stringWithFormat:@"(%ld) tin nhắn mới", (long)n]);
 }
 
-static void Z2InstallHooks(void) {
-    Class appCls = objc_getClass("UIApplication");
-    Method setDel = class_getInstanceMethod(appCls, @selector(setDelegate:));
+static void (*Z2OrigSetDel)(id, SEL, id) = NULL;
+static void Z2HookedSetDel(id self, SEL _cmd, id del) {
+    if (Z2OrigSetDel) Z2OrigSetDel(self, _cmd, del);
+    Z2Start();
+}
+
+static void Z2Install(void) {
+    Class app = objc_getClass("UIApplication");
+    Method setDel = class_getInstanceMethod(app, @selector(setDelegate:));
     if (setDel) {
-        Z2OrigSetDelegate = (void *)method_getImplementation(setDel);
-        method_setImplementation(setDel, (IMP)Z2HookedSetDelegate);
+        Z2OrigSetDel = (void *)method_getImplementation(setDel);
+        method_setImplementation(setDel, (IMP)Z2HookedSetDel);
     }
-    // UNUserNotificationCenter setDelegate
+    Method badge = class_getInstanceMethod(app, @selector(setApplicationIconBadgeNumber:));
+    if (badge) {
+        Z2OrigSetBadge = (void *)method_getImplementation(badge);
+        method_setImplementation(badge, (IMP)Z2HookedSetBadge);
+    }
     Class unc = objc_getClass("UNUserNotificationCenter");
     Method m = class_getInstanceMethod(unc, @selector(setDelegate:));
     if (m) {
-        static void (*origUNC)(id, SEL, id) = NULL;
-        origUNC = (void *)method_getImplementation(m);
+        IMP old = method_getImplementation(m);
         IMP hook = imp_implementationWithBlock(^(id self, id del) {
-            if (origUNC) origUNC(self, @selector(setDelegate:), del);
+            ((void (*)(id, SEL, id))old)(self, @selector(setDelegate:), del);
             Z2SwizzleDelegate(del);
         });
         method_setImplementation(m, hook);
@@ -197,17 +205,15 @@ __attribute__((constructor))
 static void Zalo2KeepAliveInit(void) {
     @autoreleasepool {
         NSString *bid = [[NSBundle mainBundle] bundleIdentifier] ?: @"?";
-        NSLog(@"[Zalo2KeepAlive] loaded into %@", bid);
-        // Không inject nhầm SpringBoard / app khác nếu lỡ dùng chung file
         if ([bid isEqualToString:@"com.apple.springboard"]) return;
-
-        Z2InstallHooks();
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+        NSLog(@"[Zalo2KeepAlive] load %@", bid);
+        Z2Install();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             Z2Start();
             Z2SwizzleDelegate([UNUserNotificationCenter currentNotificationCenter].delegate);
         });
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             Z2Start();
             Z2SwizzleDelegate([UNUserNotificationCenter currentNotificationCenter].delegate);
