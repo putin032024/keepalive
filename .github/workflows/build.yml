@@ -1,4 +1,4 @@
-# 1 job: rootless .deb — Dopamine + RootHide (cài rootless được)
+# 1 bản rootless — Dopamine / RootHide đều dùng được
 name: Build
 
 on:
@@ -10,38 +10,27 @@ on:
 jobs:
   build:
     name: Build rootless deb
-    runs-on: ubuntu-latest
+    # 22.04: toolchain Theos Linux còn hỗ trợ (24.04 = ubuntu-latest sẽ vỡ)
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Theos
         uses: beerpiss/theos-action@v1
         with:
           cache: true
 
-      - name: Install deps
+      - name: Build
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq perl curl unzip
-
-      - name: Build package (rootless)
-        env:
-          THEOS: ${{ github.workspace }}/theos
-        run: |
-          set -e
+          set -eux
+          export THEOS="${THEOS:-$GITHUB_WORKSPACE/theos}"
           export PATH="$THEOS/bin:$PATH"
-          echo "THEOS=$THEOS"
-          ls -la "$THEOS" || true
           make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless -j$(nproc)
-          echo "=== packages ==="
-          ls -la packages/
-          mkdir -p dist
-          cp -f packages/*.deb dist/
-          ls -la dist/
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          ls -lah packages/
+          test -n "$(ls packages/*.deb 2>/dev/null)"
 
-      - name: Upload .deb
+      - name: Upload KeepAlive.deb
         uses: actions/upload-artifact@v4
         with:
           name: KeepAlive-rootless
