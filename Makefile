@@ -10,8 +10,9 @@ TWEAK_NAME = KeepAlive
 
 KeepAlive_FILES = Tweak.x KAConfig.m
 KeepAlive_CFLAGS = -fobjc-arc -Wno-unused-variable -Wno-deprecated-declarations -Wno-unguarded-availability-new
+# Không link private frameworks (Xcode SDK CI không có FrontBoard)
+# Dùng %c() / runtime — giống nhiều tweak SpringBoard
 KeepAlive_FRAMEWORKS = UIKit Foundation UserNotifications CoreGraphics
-KeepAlive_PRIVATE_FRAMEWORKS = FrontBoard FrontBoardServices BackBoardServices
 KeepAlive_ARCHS = arm64
 KeepAlive_LOGOS_DEFAULT_GENERATOR = internal
 
