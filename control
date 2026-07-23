@@ -1,8 +1,8 @@
 Package: com.local.keepalive
 Name: KeepAlive
-Version: 2.2.0
+Version: 2.3.0
 Architecture: iphoneos-arm64
-Description: v2.2 fix 5min death - scene freeze + soft-wake 3m + local banner on sound/badge. RootHide.
+Description: Longevity mode ~2h - scene freeze + audio + relaunch. Sound only OK. Green/red. RootHide.
 Maintainer: putin032024
 Author: putin032024
 Section: Tweaks

@@ -1,8 +1,8 @@
-// KeepAlive v2.2 — Zalo2 dual-IPA (fix 5p tịt + chỉ "đã gửi")
-// 1) Scene freeze lại → socket sống → "đã nhận"
-// 2) Soft-wake mỗi 3 phút (process 🟢 nhưng socket chết)
-// 3) Badge / tiếng hệ thống → local BANNER popup
-// 4) 🟢 process sống | 🔴 process chết
+// KeepAlive v2.3 — "bản ~2 tiếng" (ưu tiên SỐNG LÂU + đã nhận)
+// Scene freeze + silent audio + relaunch khi chết
+// Soft-wake ~40 phút (không wake 3 phút)
+// 🟢 sống / 🔴 chết
+// KHÔNG ép local banner (user: chỉ cần sống lâu như bản trước)
 
 #import "KAConfig.h"
 #import "Headers.h"
@@ -10,24 +10,21 @@
 #import <objc/message.h>
 #import <notify.h>
 #import <AVFoundation/AVFoundation.h>
-#import <AudioToolbox/AudioToolbox.h>
 #import <UIKit/UIKit.h>
 #import <UserNotifications/UserNotifications.h>
 
-static BOOL gFolder = NO;
-
-#pragma mark - Silent audio keep-alive (IN APP)
+#pragma mark - Silent audio (IN APP)
 
 static AVAudioPlayer *gPlayer;
-static UIBackgroundTaskIdentifier gBg; // init 0 / Invalid
+static UIBackgroundTaskIdentifier gBg;
+static BOOL gBgInit;
 static NSTimer *gTimer;
-static BOOL gAudioOn;
-static BOOL gBgInited;
+static BOOL gStarted;
 
 static void KAEnsureBgId(void) {
-    if (!gBgInited) {
+    if (!gBgInit) {
         gBg = UIBackgroundTaskInvalid;
-        gBgInited = YES;
+        gBgInit = YES;
     }
 }
 
@@ -75,82 +72,58 @@ static void KABeginBg(void) {
 }
 
 static void KAStartAudio(void) {
-    NSError *err = nil;
-    AVAudioSession *s = [AVAudioSession sharedInstance];
-    // Mix + không deactivate khi interrupted nếu có thể
-    [s setCategory:AVAudioSessionCategoryPlayback
-       withOptions:AVAudioSessionCategoryOptionMixWithOthers
-             error:&err];
-    [s setActive:YES withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:&err];
-    if (!gPlayer) {
-        gPlayer = [[AVAudioPlayer alloc] initWithData:KASilentWav() error:&err];
-        gPlayer.numberOfLoops = -1;
-        gPlayer.volume = 0.05; // hơi to hơn 0.01 cho khó bị iOS coi silent-skip
-    }
-    if (gPlayer && !gPlayer.isPlaying) {
-        [gPlayer prepareToPlay];
-        [gPlayer play];
-    }
-    KABeginBg();
-    gAudioOn = YES;
-}
-
-static void KAStopAudio(void) {
-    [gPlayer stop];
-    gPlayer = nil;
-    KAEndBg();
-    gAudioOn = NO;
+    @try {
+        NSError *err = nil;
+        AVAudioSession *s = [AVAudioSession sharedInstance];
+        [s setCategory:AVAudioSessionCategoryPlayback
+           withOptions:AVAudioSessionCategoryOptionMixWithOthers
+                 error:&err];
+        [s setActive:YES error:&err];
+        if (!gPlayer) {
+            gPlayer = [[AVAudioPlayer alloc] initWithData:KASilentWav() error:&err];
+            gPlayer.numberOfLoops = -1;
+            gPlayer.volume = 0.05;
+        }
+        if (gPlayer && !gPlayer.isPlaying) {
+            [gPlayer prepareToPlay];
+            [gPlayer play];
+        }
+        KABeginBg();
+    } @catch (__unused NSException *e) {}
 }
 
 static void KATick(void) {
-    if (![[KAConfig shared] isImmortal:[[NSBundle mainBundle] bundleIdentifier]]) {
-        if (gAudioOn) KAStopAudio();
+    if (![[KAConfig shared] isImmortal:[[NSBundle mainBundle] bundleIdentifier]])
         return;
-    }
     KAStartAudio();
 }
 
 static void KAStartIfNeeded(void) {
     [[KAConfig shared] reload];
-    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
-    if (![[KAConfig shared] isImmortal:me]) return;
+    if (![[KAConfig shared] isImmortal:[[NSBundle mainBundle] bundleIdentifier]])
+        return;
     dispatch_async(dispatch_get_main_queue(), ^{
         KATick();
-        if (!gTimer) {
-            gTimer = [NSTimer timerWithTimeInterval:8.0 repeats:YES
+        if (!gStarted) {
+            gStarted = YES;
+            gTimer = [NSTimer timerWithTimeInterval:12.0 repeats:YES
                 block:^(__unused NSTimer *t) { KATick(); }];
             [[NSRunLoop mainRunLoop] addTimer:gTimer forMode:NSRunLoopCommonModes];
+            [[NSNotificationCenter defaultCenter]
+                addObserverForName:AVAudioSessionInterruptionNotification
+                            object:nil
+                             queue:[NSOperationQueue mainQueue]
+                        usingBlock:^(__unused NSNotification *n) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{ KATick(); });
+            }];
+            [[NSNotificationCenter defaultCenter]
+                addObserverForName:UIApplicationDidEnterBackgroundNotification
+                            object:nil
+                             queue:[NSOperationQueue mainQueue]
+                        usingBlock:^(__unused NSNotification *n) { KATick(); }];
         }
-        // resume audio sau interrupt (cuộc gọi, app khác)
-        [[NSNotificationCenter defaultCenter]
-            addObserverForName:AVAudioSessionInterruptionNotification
-                        object:nil
-                         queue:[NSOperationQueue mainQueue]
-                    usingBlock:^(__unused NSNotification *n) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{ KATick(); });
-        }];
     });
-}
-
-#pragma mark - Bundle id from notification request
-
-static NSString *KAReqBundle(id req) {
-    if (!req) return nil;
-    @try {
-        if ([req respondsToSelector:@selector(sectionIdentifier)]) {
-            NSString *s = ((id (*)(id, SEL))objc_msgSend)(req, @selector(sectionIdentifier));
-            if ([s isKindOfClass:[NSString class]] && s.length) return s;
-        }
-        if ([req respondsToSelector:@selector(bulletin)]) {
-            id b = ((id (*)(id, SEL))objc_msgSend)(req, @selector(bulletin));
-            if (b && [b respondsToSelector:@selector(sectionID)]) {
-                NSString *s = ((id (*)(id, SEL))objc_msgSend)(b, @selector(sectionID));
-                if ([s isKindOfClass:[NSString class]] && s.length) return s;
-            }
-        }
-    } @catch (__unused id e) {}
-    return nil;
 }
 
 #pragma mark - SPRINGBOARD
@@ -171,71 +144,50 @@ static NSMutableDictionary *KALastWake(void) {
     return d;
 }
 
-// Mở lại app — ưu tiên nhanh khi bị vuốt kill (miss notif lúc chết)
 static void KAOpenApp(NSString *bundle, NSString *reason) {
     if (!bundle.length) return;
     if ([KAPendingSet() containsObject:bundle]) return;
     [KAPendingSet() addObject:bundle];
     NSLog(@"[KeepAlive] open %@ (%@)", bundle, reason ?: @"?");
-
-    // dead = mở NGAY (vuốt nhầm); soft-wake = delay nhẹ
     BOOL urgent = [reason isEqualToString:@"dead"] || [reason isEqualToString:@"exit"];
-    int64_t delayNs = urgent ? (int64_t)(0.15 * NSEC_PER_SEC) : (int64_t)(1.0 * NSEC_PER_SEC);
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delayNs),
-                   dispatch_get_main_queue(), ^{
+    int64_t delay = urgent ? (int64_t)(0.2 * NSEC_PER_SEC) : (int64_t)(1.0 * NSEC_PER_SEC);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay), dispatch_get_main_queue(), ^{
         [KAPendingSet() removeObject:bundle];
         if (![[KAConfig shared] isImmortal:bundle]) return;
-
-        SBApplication *cur = [[%c(SBApplicationController) sharedInstance]
-                              applicationWithBundleIdentifier:bundle];
-        if (!urgent && cur.processState != nil) return;
-
-        // Thử background trước; nếu fail vẫn open thường
-        NSDictionary *bgOpts = @{
+        NSDictionary *opts = @{
             @"LSOpenApplicationOptionKeyActivateSuspended" : @YES,
             @"__ActivateSuspended" : @YES,
-            @"LSOpenApplicationOptionKeyForBackgroundFetch" : @YES,
         };
         [[%c(FBSSystemService) sharedService]
-            openApplication:bundle options:bgOpts withResult:nil];
-
-        // double-tap: 0.8s sau vẫn chết thì open full (đảm bảo sống lại)
+            openApplication:bundle options:opts withResult:nil];
         if (urgent) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 if (![[KAConfig shared] isImmortal:bundle]) return;
-                SBApplication *a2 = [[%c(SBApplicationController) sharedInstance]
-                                     applicationWithBundleIdentifier:bundle];
-                if (a2.processState != nil) return;
-                NSLog(@"[KeepAlive] retry full open %@", bundle);
+                SBApplication *a = [[%c(SBApplicationController) sharedInstance]
+                                    applicationWithBundleIdentifier:bundle];
+                if (a.processState) return;
                 [[%c(FBSSystemService) sharedService]
                     openApplication:bundle options:nil withResult:nil];
-                [[KAConfig shared] refreshIcon:bundle];
             });
         }
-
         [[KAConfig shared] refreshIcon:bundle];
         KALastWake()[bundle] = @([[NSDate date] timeIntervalSince1970]);
     });
 }
 
-// Process chết hẳn (chấm vàng / vuốt kill)
 static void KARelaunchIfDead(NSString *bundle) {
     if (!bundle.length) return;
-    KAConfig *cfg = [KAConfig shared];
-    if (!cfg.enabled || ![cfg isImmortal:bundle]) return;
+    if (![[KAConfig shared] isImmortal:bundle]) return;
     SBApplication *app = [[%c(SBApplicationController) sharedInstance]
                           applicationWithBundleIdentifier:bundle];
     if (app.processState != nil) return;
     KAOpenApp(bundle, @"dead");
 }
 
-// Soft-wake mỗi 3 phút: 🟢 còn nhưng "đã gửi" (socket chết) → reconnect
+// Soft-wake ~40 phút (kiểu bản sống lâu, không wake 3 phút)
 static void KASoftWakeIfStale(NSString *bundle) {
-    if (!bundle.length) return;
-    KAConfig *cfg = [KAConfig shared];
-    if (!cfg.enabled || ![cfg isImmortal:bundle]) return;
+    if (![[KAConfig shared] isImmortal:bundle]) return;
     SBApplication *app = [[%c(SBApplicationController) sharedInstance]
                           applicationWithBundleIdentifier:bundle];
     if (app.processState == nil) {
@@ -244,28 +196,20 @@ static void KASoftWakeIfStale(NSString *bundle) {
     }
     NSNumber *last = KALastWake()[bundle];
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    // 3 phút/lần — user báo ~5p đã mất "đã nhận"
-    if (last && (now - last.doubleValue) < 3 * 60) return;
-    KAOpenApp(bundle, @"soft-wake-3m");
+    if (last && (now - last.doubleValue) < 40 * 60) return;
+    KAOpenApp(bundle, @"soft-wake-40m");
 }
 
-static void KARefreshAllIcons(void) {
+static void KAWatchdogTick(void) {
+    if (![KAConfig shared].enabled) return;
     for (NSString *bid in [[KAConfig shared] immortalIDs]) {
+        KARelaunchIfDead(bid);
+        KASoftWakeIfStale(bid);
         [[KAConfig shared] refreshIcon:bid];
     }
 }
 
-static void KAWatchdogTick(void) {
-    KAConfig *cfg = [KAConfig shared];
-    if (!cfg.enabled) return;
-    for (NSString *bid in [cfg immortalIDs]) {
-        KARelaunchIfDead(bid);
-        KASoftWakeIfStale(bid);
-    }
-    KARefreshAllIcons(); // cập nhật 🟢/🔴
-}
-
-// Scene freeze: giữ socket → "đã nhận" (audio-only ~5p chỉ "đã gửi")
+// Scene freeze — giữ socket / đã nhận (bản ~2 tiếng)
 %hook FBScene
 - (void)updateSettings:(id)arg1 withTransitionContext:(id)arg2 completion:(id)arg3 {
     FBProcess *p = self.clientProcess;
@@ -286,17 +230,14 @@ static void KAWatchdogTick(void) {
 %end
 
 %hook SBIconView
-// Không dùng hourglass/chấm vàng — dùng 🟢/🔴 trên tên (rõ hơn)
 - (long long)currentLabelAccessoryType {
     long long a = %orig;
-    KAConfig *c = [KAConfig shared];
     NSString *bid = [self.icon applicationBundleID];
-    if (c.enabled && bid && [c isImmortal:bid]) {
+    if ([[KAConfig shared] isImmortal:bid]) {
         SBApplication *app = [[%c(SBApplicationController) sharedInstance]
                               applicationWithBundleIdentifier:bid];
         if (!app.processState)
             KARelaunchIfDead(bid);
-        // giữ accessory gốc, status = emoji trên displayName
     }
     return a;
 }
@@ -304,15 +245,12 @@ static void KAWatchdogTick(void) {
 - (NSArray *)applicationShortcutItems {
     NSArray *orig = %orig ?: @[];
     if (![KAConfig shared].enabled) return orig;
-    NSString *bid = nil;
-    if ([self.icon respondsToSelector:@selector(applicationBundleID)])
-        bid = [self.icon applicationBundleID];
+    NSString *bid = [self.icon applicationBundleID];
     if (!bid.length) return orig;
-
     BOOL on = [[KAConfig shared] isImmortal:bid];
     SBSApplicationShortcutItem *item = [[%c(SBSApplicationShortcutItem) alloc] init];
     item.localizedTitle = on ? @"Tắt KeepAlive" : @"Bật KeepAlive";
-    item.localizedSubtitle = on ? @"🟢/🔴 · wake 3p · banner" : @"Giữ Zalo2 + popup";
+    item.localizedSubtitle = on ? @"🟢 sống / 🔴 chết (~2h+)" : @"Giữ Zalo2 sống lâu";
     item.type = KA_SHORTCUT;
     item.bundleIdentifierToLaunch = bid;
     return [orig arrayByAddingObject:item];
@@ -333,39 +271,26 @@ static void KAWatchdogTick(void) {
 %end
 
 %hook SBApplication
-// 🟢 = process sống (đang KeepAlive); 🔴 = chết hẳn → vào mở lại
 - (NSString *)displayName {
     NSString *n = %orig ?: @"";
     NSString *bid = self.bundleIdentifier;
     if (![[KAConfig shared] isImmortal:bid]) return n;
-
-    // tránh cộng dồn emoji
     n = [n stringByReplacingOccurrencesOfString:@" 🟢" withString:@""];
     n = [n stringByReplacingOccurrencesOfString:@" 🔴" withString:@""];
     n = [n stringByReplacingOccurrencesOfString:@"🟢" withString:@""];
     n = [n stringByReplacingOccurrencesOfString:@"🔴" withString:@""];
     n = [n stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-
     if (self.processState != nil)
         return [n stringByAppendingString:@" 🟢"];
     return [n stringByAppendingString:@" 🔴"];
-}
-
-- (long long)labelAccessoryTypeForIcon:(id)arg1 {
-    long long a = %orig;
-    if ([[KAConfig shared] isImmortal:self.bundleIdentifier] && !self.processState)
-        KARelaunchIfDead(self.bundleIdentifier);
-    return a;
 }
 
 - (void)_didExitWithContext:(id)arg1 {
     NSString *bid = self.bundleIdentifier;
     %orig;
     [[KAConfig shared] refreshIcon:bid];
-    if ([[KAConfig shared] isImmortal:bid]) {
-        NSLog(@"[KeepAlive] %@ EXIT — relaunch + 🔴", bid);
+    if ([[KAConfig shared] isImmortal:bid])
         KAOpenApp(bid, @"exit");
-    }
 }
 %end
 
@@ -397,55 +322,14 @@ static void KAWatchdogTick(void) {
 }
 %end
 
-// Force system banners (khi có system notification)
-%hook UNSUserNotificationServer
-- (BOOL)_isApplicationForeground:(NSString *)bundle {
-    if (bundle && [[KAConfig shared] isImmortal:bundle]) return NO;
-    return %orig;
-}
-- (BOOL)isApplicationForeground:(NSString *)bundle {
-    if (bundle && [[KAConfig shared] isImmortal:bundle]) return NO;
-    return %orig;
-}
-- (void)willPresentNotification:(id)notif
-            forBundleIdentifier:(NSString *)bundle
-          withCompletionHandler:(id)handler {
-    if (bundle && [[KAConfig shared] isImmortal:bundle]) {
-        [self _didChangeApplicationState:4 forBundleIdentifier:bundle];
-        void (^origH)(NSUInteger) = handler;
-        void (^forcedH)(NSUInteger) = ^(NSUInteger options) {
-            if (origH) origH(options | KA_PRESENT_ALL);
-        };
-        %orig(notif, bundle, forcedH);
-        return;
-    }
-    %orig;
-}
-%end
-
-%hook SBNotificationBannerDestination
-- (BOOL)canReceiveNotificationRequest:(id)req {
-    NSString *bid = KAReqBundle(req);
-    if (bid && [[KAConfig shared] isImmortal:bid]) return YES;
-    return %orig;
-}
-%end
-
-%hook UNSApplicationForegroundMonitor
-- (BOOL)isApplicationForeground:(NSString *)bundle {
-    if (bundle && [[KAConfig shared] isImmortal:bundle]) return NO;
-    return %orig;
-}
-%end
-
 %hook SpringBoard
 - (void)applicationDidFinishLaunching:(id)app {
     %orig;
-    NSLog(@"[KeepAlive] v2.2: freeze+audio+wake3m+local banner");
+    NSLog(@"[KeepAlive] v2.3 longevity mode (~2h, sound ok, no popup force)");
     dispatch_async(dispatch_get_main_queue(), ^{
-        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES
+        [NSTimer scheduledTimerWithTimeInterval:15.0 repeats:YES
             block:^(__unused NSTimer *t) { KAWatchdogTick(); }];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ KAWatchdogTick(); });
     });
 }
@@ -453,125 +337,25 @@ static void KAWatchdogTick(void) {
 
 %end // SpringBoardCore
 
-#pragma mark - IN APP: audio + force willPresent + LOCAL BANNER khi badge tăng
+#pragma mark - IN APP (audio only)
 
 %group InApp
-
-static NSMutableSet *KASwizzled(void) {
-    static NSMutableSet *s;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ s = [NSMutableSet new]; });
-    return s;
-}
-static void (*KAOrigWP)(id, SEL, id, id, void (^)(NSUInteger)) = NULL;
-static NSTimeInterval gLastLocalBanner;
-
-static void KAHookedWP(id self, SEL _cmd, UNUserNotificationCenter *c,
-                       UNNotification *n, void (^completion)(NSUInteger)) {
-    void (^wrap)(NSUInteger) = ^(NSUInteger o) {
-        if (completion) completion(o | KA_PRESENT_ALL);
-    };
-    if (KAOrigWP) KAOrigWP(self, _cmd, c, n, wrap);
-    else if (completion) completion(KA_PRESENT_ALL);
-}
-static void KASwizzle(id delegate) {
-    if (!delegate) return;
-    Class cls = object_getClass(delegate);
-    NSString *name = NSStringFromClass(cls);
-    if ([KASwizzled() containsObject:name]) return;
-    SEL sel = @selector(userNotificationCenter:willPresentNotification:withCompletionHandler:);
-    Method m = class_getInstanceMethod(cls, sel);
-    if (!m) return;
-    KAOrigWP = (void *)method_getImplementation(m);
-    method_setImplementation(m, (IMP)KAHookedWP);
-    [KASwizzled() addObject:name];
-}
-
-// Zalo chỉ kêu (socket) → bắn system banner (popup)
-static void KAPostLocalBanner(NSString *body) {
-    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
-    if (![[KAConfig shared] isImmortal:me] && ![[KAConfig shared] enabled]) return;
-
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (now - gLastLocalBanner < 1.5) return;
-    gLastLocalBanner = now;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-        [center requestAuthorizationWithOptions:
-            (UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
-            completionHandler:^(__unused BOOL g, __unused NSError *e) {}];
-
-        UNMutableNotificationContent *content = [UNMutableNotificationContent new];
-        NSString *name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
-        if (!name.length)
-            name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
-        content.title = name.length ? name : @"Zalo";
-        content.body = body.length ? body : @"Bạn có tin nhắn mới";
-        content.sound = [UNNotificationSound defaultSound];
-
-        UNTimeIntervalNotificationTrigger *tr =
-            [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:0.1 repeats:NO];
-        UNNotificationRequest *req = [UNNotificationRequest
-            requestWithIdentifier:[[NSUUID UUID] UUIDString] content:content trigger:tr];
-        [center addNotificationRequest:req withCompletionHandler:nil];
-        NSLog(@"[KeepAlive] local banner: %@", body);
-    });
-}
-
-%hook UNUserNotificationCenter
-- (void)setDelegate:(id)d {
-    KASwizzle(d);
-    %orig;
-}
-- (id)delegate {
-    id d = %orig;
-    KASwizzle(d);
-    return d;
-}
-%end
 
 %hook UIApplication
 - (void)setDelegate:(id)delegate {
     %orig;
     KAStartIfNeeded();
 }
-
-- (void)setApplicationIconBadgeNumber:(NSInteger)n {
-    NSInteger old = [self applicationIconBadgeNumber];
-    %orig;
-    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
-    if (![[KAConfig shared] isImmortal:me]) return;
-    if (n > old && n > 0) {
-        KAPostLocalBanner([NSString stringWithFormat:@"(%ld) tin nhắn mới", (long)n]);
-    }
-}
 %end
 
-// Zalo kêu bằng system sound → cũng bắn banner
-%hookf(void, AudioServicesPlaySystemSound, SystemSoundID sid) {
-    %orig;
-    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
-    if ([[KAConfig shared] isImmortal:me])
-        KAPostLocalBanner(@"Tin nhắn mới");
-}
-
-%hookf(void, AudioServicesPlayAlertSound, SystemSoundID sid) {
-    %orig;
-    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
-    if ([[KAConfig shared] isImmortal:me])
-        KAPostLocalBanner(@"Tin nhắn mới");
-}
-
-%end // InApp
+%end
 
 #pragma mark - ctor
 
 static void KAPrefsCB(CFNotificationCenterRef c, void *o, CFStringRef n,
                       const void *obj, CFDictionaryRef i) {
     [[KAConfig shared] reload];
-    NSString *bid = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
-    if (![bid isEqualToString:@"com.apple.springboard"])
+    if (![[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.apple.springboard"])
         KAStartIfNeeded();
 }
 
@@ -581,10 +365,7 @@ static void KAPrefsCB(CFNotificationCenterRef c, void *o, CFStringRef n,
         CFNotificationCenterAddObserver(
             CFNotificationCenterGetDarwinNotifyCenter(), NULL, KAPrefsCB,
             CFSTR(KA_NOTIFY_CSTR), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-
         NSString *bid = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
-        NSLog(@"[KeepAlive] load in %@", bid);
-
         if ([bid isEqualToString:@"com.apple.springboard"]) {
             %init(SpringBoardCore);
         } else {
@@ -592,10 +373,7 @@ static void KAPrefsCB(CFNotificationCenterRef c, void *o, CFStringRef n,
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{ KAStartIfNeeded(); });
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                KASwizzle([UNUserNotificationCenter currentNotificationCenter].delegate);
-                KAStartIfNeeded();
-            });
+                           dispatch_get_main_queue(), ^{ KAStartIfNeeded(); });
         }
     }
 }
