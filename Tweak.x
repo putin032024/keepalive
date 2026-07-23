@@ -4,6 +4,7 @@
 #import "KAConfig.h"
 #import "Headers.h"
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import <notify.h>
 
 static BOOL gFolder = NO;
