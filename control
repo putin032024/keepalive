@@ -1,8 +1,8 @@
 Package: com.local.keepalive
 Name: KeepAlive
-Version: 1.4.0
+Version: 1.6.0
 Architecture: iphoneos-arm64
-Description: Immortal keep-alive + force notification banners. Shows in Settings. Use RootHide Patcher on Dopamine2-roothide.
+Description: Silent-audio keep-alive + auto-relaunch when process dies (hourglass vs yellow dot). RootHide Patcher.
 Maintainer: putin032024
 Author: putin032024
 Section: Tweaks

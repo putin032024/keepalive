@@ -75,14 +75,15 @@ static void KABeginBg(void) {
 static void KAStartAudio(void) {
     NSError *err = nil;
     AVAudioSession *s = [AVAudioSession sharedInstance];
+    // Mix + không deactivate khi interrupted nếu có thể
     [s setCategory:AVAudioSessionCategoryPlayback
        withOptions:AVAudioSessionCategoryOptionMixWithOthers
              error:&err];
-    [s setActive:YES error:&err];
+    [s setActive:YES withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:&err];
     if (!gPlayer) {
         gPlayer = [[AVAudioPlayer alloc] initWithData:KASilentWav() error:&err];
         gPlayer.numberOfLoops = -1;
-        gPlayer.volume = 0.01;
+        gPlayer.volume = 0.05; // hơi to hơn 0.01 cho khó bị iOS coi silent-skip
     }
     if (gPlayer && !gPlayer.isPlaying) {
         [gPlayer prepareToPlay];
@@ -90,8 +91,6 @@ static void KAStartAudio(void) {
     }
     KABeginBg();
     gAudioOn = YES;
-    NSLog(@"[KeepAlive] silent audio keep-alive ON (%@)",
-          [[NSBundle mainBundle] bundleIdentifier]);
 }
 
 static void KAStopAudio(void) {
@@ -116,10 +115,20 @@ static void KAStartIfNeeded(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         KATick();
         if (!gTimer) {
-            gTimer = [NSTimer timerWithTimeInterval:15.0 repeats:YES
+            // renew audio/bg task thường xuyên hơn
+            gTimer = [NSTimer timerWithTimeInterval:10.0 repeats:YES
                 block:^(__unused NSTimer *t) { KATick(); }];
             [[NSRunLoop mainRunLoop] addTimer:gTimer forMode:NSRunLoopCommonModes];
         }
+        // resume audio sau interrupt (cuộc gọi, app khác)
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:AVAudioSessionInterruptionNotification
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(__unused NSNotification *n) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ KATick(); });
+        }];
     });
 }
 
@@ -143,12 +152,53 @@ static NSString *KAReqBundle(id req) {
     return nil;
 }
 
-#pragma mark - SPRINGBOARD: menu + lock kill + force banner
-// KHÔNG chặn FBScene deactivate nữa → app background → có system banner
+#pragma mark - SPRINGBOARD: menu + lock kill + force banner + AUTO RELAUNCH
+// Đồng hồ cát = process sống; chấm vàng = process chết → tự mở lại
 
 %group SpringBoardCore
 
-// --- bỏ FBScene freeze (đây là nguyên nhân chỉ-có-tiếng) ---
+static NSMutableSet *KARelaunchCooldowning(void) {
+    static NSMutableSet *s;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ s = [NSMutableSet new]; });
+    return s;
+}
+
+// Mở lại app immortal khi process chết (jetsam / iOS kill sau 1–2h)
+static void KARelaunchIfDead(NSString *bundle) {
+    if (!bundle.length) return;
+    KAConfig *cfg = [KAConfig shared];
+    if (!cfg.enabled || ![cfg isImmortal:bundle]) return;
+
+    SBApplication *app = [[%c(SBApplicationController) sharedInstance]
+                          applicationWithBundleIdentifier:bundle];
+    if (app.processState != nil) return; // còn sống
+
+    if ([KARelaunchPending() containsObject:bundle]) return;
+    [KARelaunchPending() addObject:bundle];
+
+    NSLog(@"[KeepAlive] process dead → relaunch %@", bundle);
+    // Tránh spam: delay ngắn rồi mở
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [KARelaunchPending() removeObject:bundle];
+        if (![[KAConfig shared] isImmortal:bundle]) return;
+        SBApplication *a2 = [[%c(SBApplicationController) sharedInstance]
+                             applicationWithBundleIdentifier:bundle];
+        if (a2.processState != nil) return;
+        [[%c(FBSSystemService) sharedService]
+            openApplication:bundle options:nil withResult:nil];
+        [[KAConfig shared] refreshIcon:bundle];
+    });
+}
+
+static void KAWatchdogTick(void) {
+    KAConfig *cfg = [KAConfig shared];
+    if (!cfg.enabled) return;
+    for (NSString *bid in [cfg immortalIDs]) {
+        KARelaunchIfDead(bid);
+    }
+}
 
 %hook SBIconView
 - (long long)currentLabelAccessoryType {
@@ -160,6 +210,9 @@ static NSString *KAReqBundle(id req) {
         SBApplication *app = [[%c(SBApplicationController) sharedInstance]
                               applicationWithBundleIdentifier:bid];
         a = app.processState ? 4 : 2;
+        // chấm vàng = chết → schedule relaunch
+        if (!app.processState)
+            KARelaunchIfDead(bid);
     }
     return a;
 }
@@ -195,13 +248,22 @@ static NSString *KAReqBundle(id req) {
 %hook SBApplication
 - (long long)labelAccessoryTypeForIcon:(id)arg1 {
     long long a = %orig;
-    if ([[KAConfig shared] isImmortal:self.bundleIdentifier])
+    if ([[KAConfig shared] isImmortal:self.bundleIdentifier]) {
         a = self.processState ? 4 : 2;
+        if (!self.processState)
+            KARelaunchIfDead(self.bundleIdentifier);
+    }
     return a;
 }
 - (void)_didExitWithContext:(id)arg1 {
+    NSString *bid = self.bundleIdentifier;
     %orig;
-    [[KAConfig shared] refreshIcon:self.bundleIdentifier];
+    [[KAConfig shared] refreshIcon:bid];
+    // Jetsam / kill → tự mở lại nếu vẫn immortal
+    if ([[KAConfig shared] isImmortal:bid]) {
+        NSLog(@"[KeepAlive] %@ exited, will relaunch", bid);
+        KARelaunchIfDead(bid);
+    }
 }
 %end
 
@@ -277,7 +339,17 @@ static NSString *KAReqBundle(id req) {
 %hook SpringBoard
 - (void)applicationDidFinishLaunching:(id)app {
     %orig;
-    NSLog(@"[KeepAlive] SB ready — audio keep-alive mode (no scene-freeze)");
+    NSLog(@"[KeepAlive] SB ready — audio + auto-relaunch watchdog");
+    // Watchdog: mỗi 45s check app immortal còn process không
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSTimer scheduledTimerWithTimeInterval:45.0 repeats:YES
+            block:^(__unused NSTimer *t) {
+                KAWatchdogTick();
+            }];
+        // check sớm sau boot
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ KAWatchdogTick(); });
+    });
 }
 %end
 
