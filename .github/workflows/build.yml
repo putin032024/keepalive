@@ -1,4 +1,3 @@
-# Giống HTCam: macos + Theos. Thêm theos/sdks để link Preferences (Settings).
 name: Build KeepAlive
 
 on:
@@ -11,69 +10,37 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup Theos + SDKs
-      run: |
-        set -e
-        git clone --recursive https://github.com/theos/theos.git $HOME/theos
-        # SDK có PrivateFrameworks (Preferences) — Xcode public SDK thiếu
-        rm -rf $HOME/theos/sdks
-        git clone --depth=1 https://github.com/theos/sdks.git $HOME/theos/sdks
-        ls $HOME/theos/sdks
-        echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+      - name: Setup Theos and SDKs
+        run: |
+          set -e
+          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+          rm -rf "$HOME/theos/sdks"
+          git clone --depth=1 https://github.com/theos/sdks.git "$HOME/theos/sdks"
+          ls "$HOME/theos/sdks"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
 
-    - name: Install dependencies
-      run: brew install ldid || true
+      - name: Install ldid
+        run: brew install ldid || true
 
-    - name: Build KeepAlive
-      run: |
-        set -e
-        echo "Building KeepAlive #${{ github.run_number }}"
-        sed -i '' "s/^Version:.*/Version: 1.3.0-${{ github.run_number }}/" control
-        # Ưu tiên SDK 14.5 trong theos/sdks
-        make clean || true
-        make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-        echo "=== packages ==="
-        ls -lah packages/
-        # In size dylib trong deb
-        deb=$(ls packages/*.deb | head -1)
-        echo "DEB=$deb size=$(stat -f%z "$deb")"
-        mkdir -p /tmp/debx && cd /tmp/debx
-        ar x "$GITHUB_WORKSPACE/$deb" || true
-        # mac ar
-        cd "$GITHUB_WORKSPACE"
-        python3 - <<'PY'
-import lzma, tarfile, os, glob
-debs = glob.glob("packages/*.deb")
-print("debs", debs)
-# use ar via subprocess
-import subprocess, tempfile, shutil
-from pathlib import Path
-deb = Path(debs[0])
-td = Path(tempfile.mkdtemp())
-subprocess.check_call(["ar","x", str(deb.absolute())], cwd=td)
-data = next(td.glob("data.tar*"))
-if data.suffix == ".lzma" or str(data).endswith(".lzma"):
-    f = lzma.open(data)
-    t = tarfile.open(fileobj=f)
-elif str(data).endswith(".gz"):
-    t = tarfile.open(data, "r:gz")
-else:
-    t = tarfile.open(data)
-print("=== DATA FILES ===")
-for m in t.getmembers():
-    if m.isfile():
-        print(f"{m.size:8d}  {m.name}")
-t.close()
-PY
+      - name: Build package
+        run: |
+          set -e
+          sed -i '' "s/^Version:.*/Version: 1.3.0-${{ github.run_number }}/" control
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          ls -lah packages/
+          # list contents size
+          deb=$(ls packages/*.deb | head -1)
+          echo "DEB=$deb"
+          python3 scripts/list_deb.py "$deb" || true
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: keepalive-rootless-${{ github.run_number }}
-        path: packages/*.deb
-        if-no-files-found: error
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keepalive-rootless-${{ github.run_number }}
+          path: packages/*.deb
+          if-no-files-found: error
