@@ -9,32 +9,6 @@
 
 static BOOL gFolder = NO;
 
-static void KAShowLoadedToast(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // Toast đơn giản qua UIAlert (1 lần mỗi respring)
-        static BOOL shown = NO;
-        if (shown) return;
-        shown = YES;
-
-        UIWindow *win = nil;
-        for (UIWindow *w in [UIApplication sharedApplication].windows) {
-            if (w.isKeyWindow) { win = w; break; }
-        }
-        if (!win) win = [UIApplication sharedApplication].windows.firstObject;
-        UIViewController *root = win.rootViewController;
-        while (root.presentedViewController) root = root.presentedViewController;
-        if (!root) return;
-
-        UIAlertController *ac = [UIAlertController
-            alertControllerWithTitle:@"KeepAlive"
-            message:@"Tweak đã load vào SpringBoard.\nHold icon app → Bật KeepAlive."
-            preferredStyle:UIAlertControllerStyleAlert];
-        [ac addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-        [root presentViewController:ac animated:YES completion:nil];
-        NSLog(@"[KeepAlive] SpringBoard loaded OK");
-    });
-}
-
 #pragma mark - IMMORTAL
 
 %group SpringBoardCore
