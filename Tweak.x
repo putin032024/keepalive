@@ -17,9 +17,17 @@ static BOOL gFolder = NO;
 #pragma mark - Silent audio keep-alive (IN APP)
 
 static AVAudioPlayer *gPlayer;
-static UIBackgroundTaskIdentifier gBg = UIBackgroundTaskInvalid;
+static UIBackgroundTaskIdentifier gBg; // init 0 / Invalid
 static NSTimer *gTimer;
 static BOOL gAudioOn;
+static BOOL gBgInited;
+
+static void KAEnsureBgId(void) {
+    if (!gBgInited) {
+        gBg = UIBackgroundTaskInvalid;
+        gBgInited = YES;
+    }
+}
 
 static NSData *KASilentWav(void) {
     NSMutableData *d = [NSMutableData dataWithLength:44 + 800];
@@ -47,6 +55,7 @@ static NSData *KASilentWav(void) {
 }
 
 static void KAEndBg(void) {
+    KAEnsureBgId();
     if (gBg != UIBackgroundTaskInvalid) {
         [[UIApplication sharedApplication] endBackgroundTask:gBg];
         gBg = UIBackgroundTaskInvalid;
@@ -54,6 +63,7 @@ static void KAEndBg(void) {
 }
 
 static void KABeginBg(void) {
+    KAEnsureBgId();
     UIApplication *app = [UIApplication sharedApplication];
     if (!app) return;
     KAEndBg();
@@ -306,8 +316,15 @@ static void KASwizzle(id delegate) {
 }
 
 %hook UNUserNotificationCenter
-- (void)setDelegate:(id)d { KASwizzle(d); %orig; }
-- (id)delegate { id d = %orig; KASwizzle(d); return d; }
+- (void)setDelegate:(id)d {
+    KASwizzle(d);
+    %orig;
+}
+- (id)delegate {
+    id d = %orig;
+    KASwizzle(d);
+    return d;
+}
 %end
 
 %hook UIApplication
