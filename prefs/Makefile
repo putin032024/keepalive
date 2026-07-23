@@ -10,16 +10,16 @@ endif
 
 include $(THEOS)/makefiles/common.mk
 
-BUNDLE_NAME = ForceBannerPrefs
+BUNDLE_NAME = KeepAlivePrefs
 
-ForceBannerPrefs_FILES = AARootListController.m
-ForceBannerPrefs_FRAMEWORKS = UIKit
-ForceBannerPrefs_PRIVATE_FRAMEWORKS = Preferences
-ForceBannerPrefs_INSTALL_PATH = /Library/PreferenceBundles
-ForceBannerPrefs_CFLAGS = -fobjc-arc
+KeepAlivePrefs_FILES = AARootListController.m
+KeepAlivePrefs_FRAMEWORKS = UIKit
+KeepAlivePrefs_PRIVATE_FRAMEWORKS = Preferences
+KeepAlivePrefs_INSTALL_PATH = /Library/PreferenceBundles
+KeepAlivePrefs_CFLAGS = -fobjc-arc
 
 include $(THEOS_MAKE_PATH)/bundle.mk
 
 internal-stage::
 	$(ECHO_NOTHING)mkdir -p $(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences$(ECHO_END)
-	$(ECHO_NOTHING)cp entry.plist $(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences/ForceBanner.plist$(ECHO_END)
+	$(ECHO_NOTHING)cp entry.plist $(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences/KeepAlive.plist$(ECHO_END)

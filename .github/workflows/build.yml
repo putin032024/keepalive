@@ -1,4 +1,4 @@
-name: Build ForceBanner
+name: Build KeepAlive
 
 on:
   push:
@@ -10,24 +10,23 @@ on:
 
 jobs:
   build-rootless:
-    name: Rootless (Dopamine)
+    name: Rootless
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
       - uses: beerpiss/theos-action@v1
-      - name: Build
-        run: |
+      - run: |
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
           mkdir -p dist
           for f in packages/*.deb; do
             [ -f "$f" ] || continue
-            cp -f "$f" "dist/forcebanner-rootless-$(basename "$f")"
+            cp -f "$f" "dist/keepalive-rootless-$(basename "$f")"
           done
           ls -la dist/
       - uses: actions/upload-artifact@v4
         with:
-          name: forcebanner-rootless
+          name: keepalive-rootless
           path: dist/*.deb
           if-no-files-found: error
 
@@ -37,20 +36,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: beerpiss/theos-action@v1
-      - name: Build
-        run: |
+      - run: |
           make clean || true
           sed -i '' 's/iphoneos-arm64/iphoneos-arm/g' control
           make package FINALPACKAGE=1 SCHEME=rootful
           mkdir -p dist
           for f in packages/*.deb; do
             [ -f "$f" ] || continue
-            cp -f "$f" "dist/forcebanner-rootful-$(basename "$f")"
+            cp -f "$f" "dist/keepalive-rootful-$(basename "$f")"
           done
           ls -la dist/
       - uses: actions/upload-artifact@v4
         with:
-          name: forcebanner-rootful
+          name: keepalive-rootful
           path: dist/*.deb
           if-no-files-found: error
 
@@ -60,20 +58,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: beerpiss/theos-action@v1
-      - name: Build
-        run: |
+      - run: |
           make clean || true
-          make package FINALPACKAGE=1 SCHEME=roothide THEOS_PACKAGE_SCHEME=roothide || \
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide || true
           mkdir -p dist
           for f in packages/*.deb; do
             [ -f "$f" ] || continue
-            cp -f "$f" "dist/forcebanner-roothide-$(basename "$f")"
+            cp -f "$f" "dist/keepalive-roothide-$(basename "$f")"
           done
           ls -la dist/ || true
       - uses: actions/upload-artifact@v4
         with:
-          name: forcebanner-roothide
+          name: keepalive-roothide
           path: dist/*.deb
           if-no-files-found: warn
 

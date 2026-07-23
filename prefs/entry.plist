@@ -1,9 +1,9 @@
 {
 	entry = {
-		bundle = ForceBannerPrefs;
+		bundle = KeepAlivePrefs;
 		cell = PSLinkCell;
 		detail = AARootListController;
 		isController = 1;
-		label = ForceBanner;
+		label = KeepAlive;
 	};
 }

@@ -1,31 +1,28 @@
-# ForceBanner (+ Immortalizer)
+# KeepAlive
 
-**Không tắt Immortalizer.**
+**Một tweak duy nhất** (thay Immortalizer):
 
-| Tweak | Việc |
-|--------|------|
-| **Immortalizer** (giữ nguyên, luôn bật) | Giữ app sống → không miss tin sau 30p |
-| **ForceBanner** (tweak này) | Ép **popup/banner** khi Immortalizer đang immortal (hết chỉ-có-tiếng) |
+1. **Giữ app sống** — hold icon → Bật KeepAlive → **để bật** (đừng tắt, tránh mất notif sau ~30p)  
+2. **Popup bắt buộc** — khi app immortal, **luôn** ép banner/popup (core feature, không có nút tắt, không cần tweak phụ)
 
 ## Cài
 
-1. Immortalizer **vẫn bật**, Zalo vẫn immortal như đang dùng  
-2. Cài `ForceBanner` `.deb` (rootless / rootful / roothide)  
-3. Respring  
-4. **Cài đặt → ForceBanner → Bật**  
-5. (Mặc định) **Chỉ app Immortalizer đang bật**  
-6. Test nhắn: **popup + tiếng**
+1. **Gỡ Immortalizer** (tránh conflict — `Conflicts` trong control)  
+2. Cài KeepAlive `.deb` → respring  
+3. Hold Zalo / Messenger… → **Bật KeepAlive**  
+4. Test: nhắn tới = **popup + tiếng**, app vẫn sống nền  
 
 ## Build
 
 ```bash
-make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless   # Dopamine
-make package FINALPACKAGE=1 SCHEME=roothide                 # RootHide
+make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
 ```
-
-GitHub Actions: artifact `forcebanner-rootless` / `rootful` / `roothide`.
 
 ## Source
 
-- `Tweak.x` — toàn bộ logic ép banner (SpringBoard + in-app)
-- Đọc list Immortalizer: `ImmortalForegroundBundleIDs`
+| File | Việc |
+|------|------|
+| `Tweak.x` | Immortal + ép popup (cùng file) |
+| `KAConfig.*` | List app immortal |
+| `prefs/` | Chỉ bật/tắt cả tweak |

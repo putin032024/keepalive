@@ -2,7 +2,6 @@ TARGET := iphone:clang:latest:14.0
 ARCHS = arm64 arm64e
 INSTALL_TARGET_PROCESSES = SpringBoard
 
-# Dopamine rootless default
 ifeq ($(SCHEME),rootful)
 else ifeq ($(SCHEME),roothide)
   THEOS_PACKAGE_SCHEME = roothide
@@ -12,12 +11,13 @@ endif
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = ForceBanner
+TWEAK_NAME = KeepAlive
 
-ForceBanner_FILES = Tweak.x
-ForceBanner_CFLAGS = -fobjc-arc -Wno-unused-variable -Wno-deprecated-declarations
-ForceBanner_FRAMEWORKS = UIKit Foundation UserNotifications
-ForceBanner_LOGOS_DEFAULT_GENERATOR = internal
+KeepAlive_FILES = Tweak.x KAConfig.m
+KeepAlive_CFLAGS = -fobjc-arc -Wno-unused-variable -Wno-deprecated-declarations
+KeepAlive_FRAMEWORKS = UIKit Foundation UserNotifications CoreGraphics
+KeepAlive_PRIVATE_FRAMEWORKS = FrontBoard FrontBoardServices BackBoardServices
+KeepAlive_LOGOS_DEFAULT_GENERATOR = internal
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

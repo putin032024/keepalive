@@ -8,9 +8,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>ForceBanner</string>
+			<string>KeepAlive</string>
 			<key>footerText</key>
-			<string>Dùng CÙNG Immortalizer. KHÔNG tắt Immortalizer. Tweak này chỉ ép hiện popup/banner khi Immortalizer đang giữ app (hết lỗi chỉ có tiếng).</string>
+			<string>1 TWEAK duy nhất: giữ app sống (Immortal) + LUÔN ép popup/banner. Không có tweak phụ. Hold icon app → Bật KeepAlive và để bật. Popup là tính năng cốt lõi, luôn bật khi app immortal.</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -18,50 +18,22 @@
 			<key>default</key>
 			<true/>
 			<key>defaults</key>
-			<string>com.local.forcebanner.prefs</string>
+			<string>com.local.keepalive.prefs</string>
 			<key>key</key>
 			<string>enabled</string>
 			<key>label</key>
-			<string>Bật ForceBanner</string>
+			<string>Bật KeepAlive</string>
 			<key>PostNotification</key>
-			<string>com.local.forcebanner.prefschanged</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.local.forcebanner.prefs</string>
-			<key>key</key>
-			<string>onlyImmortal</string>
-			<key>label</key>
-			<string>Chỉ app Immortalizer đang bật</string>
-			<key>PostNotification</key>
-			<string>com.local.forcebanner.prefschanged</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<false/>
-			<key>defaults</key>
-			<string>com.local.forcebanner.prefs</string>
-			<key>key</key>
-			<string>forceAll</string>
-			<key>label</key>
-			<string>Ép mọi app (mạnh)</string>
-			<key>PostNotification</key>
-			<string>com.local.forcebanner.prefschanged</string>
+			<string>com.local.keepalive.prefschanged</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>1) Immortalizer GIỮ BẬT + immortal Zalo như đang dùng. 2) Cài ForceBanner. 3) Settings → ForceBanner → Bật. 4) Test nhắn tin: phải có popup + tiếng.</string>
+			<string>KHÔNG dùng chung Immortalizer (gỡ Immortalizer). Hold Zalo → Bật KeepAlive. Đừng tắt immortal app đó. Popup tự ép, không có nút tắt popup.</string>
 		</dict>
 	</array>
 	<key>title</key>
-	<string>ForceBanner</string>
+	<string>KeepAlive</string>
 </dict>
 </plist>

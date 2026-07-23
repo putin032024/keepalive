@@ -1,180 +1,224 @@
-// ForceBanner — CHẠY CÙNG Immortalizer (KHÔNG tắt Immortalizer)
-// Immortalizer: giữ app sống
-// Tweak này:     ÉP hiện popup/banner (hết chỉ-có-tiếng)
-//
-// List app immortal đọc từ Immortalizer:
-//   NSUserDefaults key: ImmortalForegroundBundleIDs
+// KeepAlive — 1 tweak duy nhất:
+//  1) Immortal: giữ app sống (như Immortalizer) — hold icon bật, ĐỂ BẬT
+//  2) Popup: BẮT BUỘC luôn ép banner — không tách tweak phụ, không cho tắt
 
-#import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
-#import <UserNotifications/UserNotifications.h>
+#import "KAConfig.h"
+#import "Headers.h"
 #import <objc/runtime.h>
 #import <notify.h>
 
-// Prefs suite riêng
-#define FB_PREFS @"com.local.forcebanner.prefs"
-#define FB_KEY_ENABLED @"enabled"
-#define FB_KEY_ONLY_IMMORTAL @"onlyImmortal"   // YES = chỉ app Immortalizer đang immortal
-#define FB_KEY_FORCE_ALL @"forceAll"           // YES = ép mọi app
-#define FB_NOTIFY @"com.local.forcebanner.prefschanged"
+static BOOL gFolder = NO;
 
-// Immortalizer list
-#define IMM_KEY @"ImmortalForegroundBundleIDs"
+#pragma mark - ===== IMMORTAL (giữ sống) =====
 
-// UNNotificationPresentationOptions: Badge|Sound|Alert|List|Banner
-#define FB_PRESENT_ALL (1u | 2u | 4u | 8u | 16u)
+%group SpringBoardCore
 
-static BOOL gEnabled = YES;
-static BOOL gOnlyImmortal = YES;
-static BOOL gForceAll = NO;
+%hook FBScene
+- (void)updateSettings:(id)arg1 withTransitionContext:(id)arg2 completion:(id)arg3 {
+    FBProcess *p = self.clientProcess;
+    if (p && [[KAConfig shared] isImmortal:p.bundleIdentifier] && arg2 == nil) {
+        [[KAConfig shared] refreshIcon:p.bundleIdentifier];
+        return;
+    }
+    %orig;
+}
+%end
 
-static void FBReload(void) {
-    NSUserDefaults *p = [[NSUserDefaults alloc] initWithSuiteName:FB_PREFS];
-    gEnabled = [p objectForKey:FB_KEY_ENABLED] ? [p boolForKey:FB_KEY_ENABLED] : YES;
-    gOnlyImmortal = [p objectForKey:FB_KEY_ONLY_IMMORTAL] ? [p boolForKey:FB_KEY_ONLY_IMMORTAL] : YES;
-    gForceAll = [p objectForKey:FB_KEY_FORCE_ALL] ? [p boolForKey:FB_KEY_FORCE_ALL] : NO;
+%hook UIMutableApplicationSceneSettings
+- (void)setDeactivationReasons:(unsigned long long)arg1 {
+    if (arg1 != 0 && [KAConfig shared].enabled && [KAConfig shared].immortalIDs.count > 0)
+        return;
+    %orig;
+}
+%end
+
+%hook SBIconView
+- (long long)currentLabelAccessoryType {
+    long long a = %orig;
+    KAConfig *c = [KAConfig shared];
+    if (!c.enabled) return a;
+    NSString *bid = [self.icon applicationBundleID];
+    if (bid && [c isImmortal:bid]) {
+        SBApplication *app = [[%c(SBApplicationController) sharedInstance] applicationWithBundleIdentifier:bid];
+        a = app.processState ? 4 : 2;
+    }
+    if ([self.icon isKindOfClass:%c(SBFolderIcon)]) {
+        for (SBIcon *ic in [(SBFolderIcon *)self.icon folder].icons) {
+            NSString *b = [ic applicationBundleID];
+            if (b && [c isImmortal:b] && !gFolder) {
+                SBApplication *app = [[%c(SBApplicationController) sharedInstance] applicationWithBundleIdentifier:b];
+                a = app.processState ? 4 : 2;
+            }
+        }
+    }
+    return a;
 }
 
-static BOOL FBIsImmortal(NSString *bundle) {
-    if (!bundle.length) return NO;
-    NSArray *ids = [[NSUserDefaults standardUserDefaults] arrayForKey:IMM_KEY];
-    return [ids containsObject:bundle];
+- (NSArray *)applicationShortcutItems {
+    NSArray *orig = %orig;
+    if (![KAConfig shared].enabled) return orig;
+    NSString *bid = [self.icon applicationBundleID];
+    if (!bid.length) return orig;
+
+    BOOL on = [[KAConfig shared] isImmortal:bid];
+    SBSApplicationShortcutItem *item = [[%c(SBSApplicationShortcutItem) alloc] init];
+    item.localizedTitle = on ? @"Tắt KeepAlive" : @"Bật KeepAlive (giữ nền + popup)";
+    item.localizedSubtitle = @"Immortal + luôn hiện banner";
+    item.type = KA_SHORTCUT;
+    UIImage *img = [UIImage systemImageNamed:@"bolt.horizontal.circle.fill"];
+    if (img)
+        item.icon = [[%c(SBSApplicationShortcutCustomImageIcon) alloc]
+                     initWithImageData:UIImagePNGRepresentation(img) dataType:0 isTemplate:YES];
+    item.bundleIdentifierToLaunch = bid;
+    return [orig arrayByAddingObject:item];
 }
 
-static BOOL FBShouldForce(NSString *bundle) {
-    if (!gEnabled) return NO;
-    if (gForceAll) return YES;
-    if (gOnlyImmortal) return FBIsImmortal(bundle);
-    return YES;
++ (void)activateShortcut:(SBSApplicationShortcutItem *)item
+    withBundleIdentifier:(NSString *)bundleID
+             forIconView:(id)iconView {
+    if ([item.type isEqualToString:KA_SHORTCUT]) {
+        [[KAConfig shared] toggleImmortal:bundleID];
+        return;
+    }
+    %orig;
 }
+%end
 
-#pragma mark - SpringBoard: ép banner khi notif tới
+%hook SBApplication
+- (long long)labelAccessoryTypeForIcon:(id)arg1 {
+    long long a = %orig;
+    if ([[KAConfig shared] isImmortal:self.bundleIdentifier])
+        a = self.processState ? 4 : 2;
+    return a;
+}
+- (void)_didExitWithContext:(id)arg1 {
+    %orig;
+    [[KAConfig shared] refreshIcon:self.bundleIdentifier];
+}
+%end
 
-@interface UNSUserNotificationServer : NSObject
-+ (id)sharedInstance;
-- (void)_didChangeApplicationState:(unsigned)state forBundleIdentifier:(NSString *)bundle;
-@end
+%hook SBFolderView
+- (void)willTransitionAnimated:(BOOL)a withSettings:(id)s { gFolder = YES; %orig; }
+- (void)didTransitionAnimated:(BOOL)a { gFolder = NO; %orig; }
+%end
 
-%group SpringBoard
+// Chặn vuốt kill app đang KeepAlive
+%hook SBFluidSwitcherItemContainer
+- (void)setKillable:(BOOL)arg1 {
+    BOOL k = arg1;
+    if ([KAConfig shared].enabled) {
+        SBAppLayout *layout = [self appLayout];
+        NSDictionary *map = nil;
+        if (@available(iOS 16.0, *))
+            map = layout.itemsToLayoutAttributesMap;
+        else {
+            Ivar iv = class_getInstanceVariable(object_getClass(layout), "_rolesToLayoutItemsMap");
+            if (iv) map = object_getIvar(layout, iv);
+        }
+        if (map) {
+            if (@available(iOS 16.0, *)) {
+                for (SBDisplayItem *it in map)
+                    if ([[KAConfig shared] isImmortal:it.bundleIdentifier]) k = NO;
+            } else {
+                SBDisplayItem *it = map[@1];
+                if ([it respondsToSelector:@selector(bundleIdentifier)] &&
+                    [[KAConfig shared] isImmortal:it.bundleIdentifier])
+                    k = NO;
+            }
+        }
+    }
+    %orig(k);
+}
+%end
+
+#pragma mark - ===== POPUP BẮT BUỘC (core, không tắt) =====
+// App immortal = foreground → iOS chỉ kêu. Ép banner tại đây — luôn chạy.
 
 %hook UNSUserNotificationServer
-
 - (void)willPresentNotification:(id)notif
             forBundleIdentifier:(NSString *)bundle
           withCompletionHandler:(id)handler {
 
-    if (FBShouldForce(bundle)) {
-        // Immortalizer giữ foreground → iOS nuốt banner
-        // Tạm coi app "không foreground" + ép options banner
+    // Mọi app đang KeepAlive: LUÔN ép popup (không có cờ tắt)
+    if ([[KAConfig shared] isImmortal:bundle]) {
         [self _didChangeApplicationState:4 forBundleIdentifier:bundle];
-
         void (^orig)(NSUInteger) = handler;
         void (^forced)(NSUInteger) = ^(NSUInteger options) {
-            if (orig) orig(options | FB_PRESENT_ALL);
+            if (orig) orig(options | KA_PRESENT_ALL);
         };
         %orig(notif, bundle, forced);
         return;
     }
     %orig;
 }
-
 %end
 
-%end
+%end // SpringBoardCore
 
-#pragma mark - Trong app: willPresent hay return 0 → ép banner
+#pragma mark - In-app willPresent (Zalo hay nuốt banner)
 
-%group InApp
+%group InAppPopup
 
-static NSMutableSet *FBSwizzled(void) {
+static NSMutableSet *KASwizzled(void) {
     static NSMutableSet *s;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ s = [NSMutableSet new]; });
     return s;
 }
 
-static void (*FBOrigWillPresent)(id, SEL, id, id, void (^)(NSUInteger)) = NULL;
+static void (*KAOrigWP)(id, SEL, id, id, void (^)(NSUInteger)) = NULL;
 
-static void FBHookedWillPresent(id self, SEL _cmd,
-                                UNUserNotificationCenter *center,
-                                UNNotification *notification,
-                                void (^completion)(NSUInteger)) {
-    void (^wrap)(NSUInteger) = ^(NSUInteger options) {
-        if (completion) completion(options | FB_PRESENT_ALL);
+static void KAHookedWP(id self, SEL _cmd, UNUserNotificationCenter *c,
+                       UNNotification *n, void (^completion)(NSUInteger)) {
+    // Trong app KeepAlive: LUÔN ép options có banner
+    void (^wrap)(NSUInteger) = ^(NSUInteger o) {
+        if (completion) completion(o | KA_PRESENT_ALL);
     };
-    if (FBOrigWillPresent)
-        FBOrigWillPresent(self, _cmd, center, notification, wrap);
-    else if (completion)
-        completion(FB_PRESENT_ALL);
+    if (KAOrigWP) KAOrigWP(self, _cmd, c, n, wrap);
+    else if (completion) completion(KA_PRESENT_ALL);
 }
 
-static void FBSwizzleDelegate(id delegate) {
-    if (!delegate || !gEnabled) return;
-    // Trong app: nếu onlyImmortal, check bundle hiện tại
-    NSString *bid = [[NSBundle mainBundle] bundleIdentifier];
-    if (!FBShouldForce(bid) && !gForceAll) {
-        // standardUserDefaults trong sandbox app có thể KHÔNG thấy ImmortalForegroundBundleIDs
-        // → nếu onlyImmortal: vẫn ép khi forceBanner bật + enabled (an toàn hơn miss popup)
-        // Đổi: trong app process luôn ép nếu gEnabled (prefs)
-        if (!gEnabled) return;
-        // tiếp tục ép nếu enabled — Immortalizer đang bật thì app này thường là immortal
-        if (gOnlyImmortal && !gForceAll) {
-            // cố đọc list; không có thì vẫn ép (tránh miss)
-        }
-    }
-
+static void KASwizzle(id delegate) {
+    if (!delegate || ![KAConfig shared].enabled) return;
     Class cls = object_getClass(delegate);
     NSString *name = NSStringFromClass(cls);
-    if ([FBSwizzled() containsObject:name]) return;
-
+    if ([KASwizzled() containsObject:name]) return;
     SEL sel = @selector(userNotificationCenter:willPresentNotification:withCompletionHandler:);
     Method m = class_getInstanceMethod(cls, sel);
     if (!m) return;
-
-    FBOrigWillPresent = (void *)method_getImplementation(m);
-    method_setImplementation(m, (IMP)FBHookedWillPresent);
-    [FBSwizzled() addObject:name];
+    KAOrigWP = (void *)method_getImplementation(m);
+    method_setImplementation(m, (IMP)KAHookedWP);
+    [KASwizzled() addObject:name];
 }
 
 %hook UNUserNotificationCenter
-
-- (void)setDelegate:(id)delegate {
-    FBSwizzleDelegate(delegate);
-    %orig;
-}
-
-- (id)delegate {
-    id d = %orig;
-    FBSwizzleDelegate(d);
-    return d;
-}
-
+- (void)setDelegate:(id)d { KASwizzle(d); %orig; }
+- (id)delegate { id d = %orig; KASwizzle(d); return d; }
 %end
 
 %end
 
 #pragma mark - ctor
 
-static void FBPrefsChanged(CFNotificationCenterRef c, void *o, CFStringRef n,
-                           const void *obj, CFDictionaryRef i) {
-    FBReload();
+static void KAPrefs(CFNotificationCenterRef c, void *o, CFStringRef n,
+                    const void *obj, CFDictionaryRef i) {
+    [[KAConfig shared] reload];
 }
 
 %ctor {
-    FBReload();
+    [[KAConfig shared] reload];
     CFNotificationCenterAddObserver(
-        CFNotificationCenterGetDarwinNotifyCenter(), NULL,
-        FBPrefsChanged, CFSTR(FB_NOTIFY), NULL,
-        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterGetDarwinNotifyCenter(), NULL, KAPrefs,
+        CFSTR(KA_NOTIFY), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
 
     NSString *bid = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
     if ([bid isEqualToString:@"com.apple.springboard"]) {
-        %init(SpringBoard);
+        %init(SpringBoardCore);
     } else {
-        %init(InApp);
+        %init(InAppPopup);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            FBSwizzleDelegate([UNUserNotificationCenter currentNotificationCenter].delegate);
+            KASwizzle([UNUserNotificationCenter currentNotificationCenter].delegate);
         });
     }
 }

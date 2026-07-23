@@ -1,9 +1,10 @@
-Package: com.local.forcebanner
-Name: ForceBanner
-Version: 1.0.0
+Package: com.local.keepalive
+Name: KeepAlive
+Version: 1.1.0
 Architecture: iphoneos-arm64
-Description: Keep Immortalizer ON. This only FORCES notification popups/banners (fixes sound-only).
+Description: Immortalizer-style keep-alive + FORCED notification banners always (one tweak, no companion).
 Maintainer: putin032024
 Author: putin032024
 Section: Tweaks
 Depends: firmware (>= 14.0), mobilesubstrate | substitute | ellekit
+Conflicts: com.sergy.immortalizer
