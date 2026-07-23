@@ -1,8 +1,8 @@
-﻿Package: com.local.keepalive
+Package: com.local.keepalive
 Name: KeepAlive
 Version: 2.0.0
 Architecture: iphoneos-arm64
-Description: Dual-IPA Zalo2 mode - ~4h keep-alive, green/red name status, instant relaunch. RootHide Patcher.
+Description: Dual-IPA Zalo2 - ~4h keep-alive, green/red name status, relaunch. RootHide Patcher.
 Maintainer: putin032024
 Author: putin032024
 Section: Tweaks
