@@ -8,9 +8,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>AlwaysAlive</string>
+			<string>ForceBanner</string>
 			<key>footerText</key>
-			<string>Giữ app sống (kiểu Immortalizer) + ép hiện banner/popup. Hold icon app → Bật AlwaysAlive.</string>
+			<string>Dùng CÙNG Immortalizer. KHÔNG tắt Immortalizer. Tweak này chỉ ép hiện popup/banner khi Immortalizer đang giữ app (hết lỗi chỉ có tiếng).</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -18,13 +18,13 @@
 			<key>default</key>
 			<true/>
 			<key>defaults</key>
-			<string>com.local.keepalive.prefs</string>
+			<string>com.local.forcebanner.prefs</string>
 			<key>key</key>
 			<string>enabled</string>
 			<key>label</key>
-			<string>Bật tweak</string>
+			<string>Bật ForceBanner</string>
 			<key>PostNotification</key>
-			<string>com.local.keepalive.prefschanged</string>
+			<string>com.local.forcebanner.prefschanged</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -32,50 +32,36 @@
 			<key>default</key>
 			<true/>
 			<key>defaults</key>
-			<string>com.local.keepalive.prefs</string>
+			<string>com.local.forcebanner.prefs</string>
 			<key>key</key>
-			<string>forceBanner</string>
+			<string>onlyImmortal</string>
 			<key>label</key>
-			<string>Ép hiện popup/banner</string>
+			<string>Chỉ app Immortalizer đang bật</string>
 			<key>PostNotification</key>
-			<string>com.local.keepalive.prefschanged</string>
+			<string>com.local.forcebanner.prefschanged</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
-			<true/>
+			<false/>
 			<key>defaults</key>
-			<string>com.local.keepalive.prefs</string>
+			<string>com.local.forcebanner.prefs</string>
 			<key>key</key>
-			<string>indicator</string>
+			<string>forceAll</string>
 			<key>label</key>
-			<string>Indicator trên icon</string>
+			<string>Ép mọi app (mạnh)</string>
 			<key>PostNotification</key>
-			<string>com.local.keepalive.prefschanged</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.local.keepalive.prefs</string>
-			<key>key</key>
-			<string>lockFromKill</string>
-			<key>label</key>
-			<string>Chặn vuốt kill (app immortal)</string>
-			<key>PostNotification</key>
-			<string>com.local.keepalive.prefschanged</string>
+			<string>com.local.forcebanner.prefschanged</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>Cách dùng: hold icon Zalo/Messenger → Bật AlwaysAlive. Cài đặt → AlwaysAlive → bật Ép popup. Build: make package THEOS_PACKAGE_SCHEME=rootless</string>
+			<string>1) Immortalizer GIỮ BẬT + immortal Zalo như đang dùng. 2) Cài ForceBanner. 3) Settings → ForceBanner → Bật. 4) Test nhắn tin: phải có popup + tiếng.</string>
 		</dict>
 	</array>
 	<key>title</key>
-	<string>AlwaysAlive</string>
+	<string>ForceBanner</string>
 </dict>
 </plist>

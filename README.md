@@ -1,42 +1,31 @@
-# KeepAlive (AlwaysAlive)
+# ForceBanner (+ Immortalizer)
 
-Jailbreak tweak: **giữ app sống** (Immortalizer-style) + **ép notification banner/popup**.
+**Không tắt Immortalizer.**
 
-Repo: https://github.com/putin032024/keepalive
+| Tweak | Việc |
+|--------|------|
+| **Immortalizer** (giữ nguyên, luôn bật) | Giữ app sống → không miss tin sau 30p |
+| **ForceBanner** (tweak này) | Ép **popup/banner** khi Immortalizer đang immortal (hết chỉ-có-tiếng) |
 
-## Cài nhanh (sau khi Actions build xong)
+## Cài
 
-1. GitHub → tab **Actions** → workflow **Build KeepAlive** → artifact  
-   - `keepalive-rootless` → Dopamine / rootless  
-   - `keepalive-rootful` → rootful  
-2. Tải `.deb` → Filza / Sileo cài → respring  
-3. **Tắt Immortalizer** (tránh conflict)  
-4. Hold icon app → **Bật AlwaysAlive**  
-5. Settings → AlwaysAlive → bật **Ép hiện popup/banner**
+1. Immortalizer **vẫn bật**, Zalo vẫn immortal như đang dùng  
+2. Cài `ForceBanner` `.deb` (rootless / rootful / roothide)  
+3. Respring  
+4. **Cài đặt → ForceBanner → Bật**  
+5. (Mặc định) **Chỉ app Immortalizer đang bật**  
+6. Test nhắn: **popup + tiếng**
 
-## Build local (Mac + Theos)
+## Build
 
 ```bash
-export THEOS=~/theos
-# Dopamine
-make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-# Rootful
-make package FINALPACKAGE=1 SCHEME=rootful
+make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless   # Dopamine
+make package FINALPACKAGE=1 SCHEME=roothide                 # RootHide
 ```
 
-## Source map
+GitHub Actions: artifact `forcebanner-rootless` / `rootful` / `roothide`.
 
-| File | Việc |
-|------|------|
-| `TweakScene.x` | Giữ process / chặn deactivate |
-| `TweakNotifications.x` | Ép banner (server + app) |
-| `TweakIcons.x` | Menu hold icon, chống kill |
-| `AAConfig.*` | Prefs / list immortal |
-| `prefs/` | Settings UI |
-| `.github/workflows/build.yml` | CI build deb |
+## Source
 
-## GitHub Actions
-
-- Push `main` / PR / **Run workflow** → build  
-- Artifacts: `.deb` rootless + rootful  
-- GitHub **Release** → tự attach `.deb`
+- `Tweak.x` — toàn bộ logic ép banner (SpringBoard + in-app)
+- Đọc list Immortalizer: `ImmortalForegroundBundleIDs`
