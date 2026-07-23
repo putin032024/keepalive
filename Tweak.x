@@ -157,7 +157,7 @@ static NSString *KAReqBundle(id req) {
 
 %group SpringBoardCore
 
-static NSMutableSet *KARelaunchCooldowning(void) {
+static NSMutableSet *KAPendingSet(void) {
     static NSMutableSet *s;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ s = [NSMutableSet new]; });
@@ -174,14 +174,14 @@ static void KARelaunchIfDead(NSString *bundle) {
                           applicationWithBundleIdentifier:bundle];
     if (app.processState != nil) return; // còn sống
 
-    if ([KARelaunchPending() containsObject:bundle]) return;
-    [KARelaunchPending() addObject:bundle];
+    if ([KAPendingSet() containsObject:bundle]) return;
+    [KAPendingSet() addObject:bundle];
 
     NSLog(@"[KeepAlive] process dead → relaunch %@", bundle);
     // Tránh spam: delay ngắn rồi mở
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [KARelaunchPending() removeObject:bundle];
+        [KAPendingSet() removeObject:bundle];
         if (![[KAConfig shared] isImmortal:bundle]) return;
         SBApplication *a2 = [[%c(SBApplicationController) sharedInstance]
                              applicationWithBundleIdentifier:bundle];
