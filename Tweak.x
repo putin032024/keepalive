@@ -1,6 +1,8 @@
-// KeepAlive v2.1 — Zalo2 dual-IPA
-// 🟢/🔴 status; ~4h via audio+soft-wake (KHÔNG scene-freeze → hết chỉ-tiếng)
-// Badge tăng → bắn LOCAL notification (popup banner)
+// KeepAlive v2.2 — Zalo2 dual-IPA (fix 5p tịt + chỉ "đã gửi")
+// 1) Scene freeze lại → socket sống → "đã nhận"
+// 2) Soft-wake mỗi 3 phút (process 🟢 nhưng socket chết)
+// 3) Badge / tiếng hệ thống → local BANNER popup
+// 4) 🟢 process sống | 🔴 process chết
 
 #import "KAConfig.h"
 #import "Headers.h"
@@ -8,6 +10,7 @@
 #import <objc/message.h>
 #import <notify.h>
 #import <AVFoundation/AVFoundation.h>
+#import <AudioToolbox/AudioToolbox.h>
 #import <UIKit/UIKit.h>
 #import <UserNotifications/UserNotifications.h>
 
@@ -228,7 +231,7 @@ static void KARelaunchIfDead(NSString *bundle) {
     KAOpenApp(bundle, @"dead");
 }
 
-// Soft-wake ~45 phút/lần để kéo socket ~4 tiếng (trước khi tịt)
+// Soft-wake mỗi 3 phút: 🟢 còn nhưng "đã gửi" (socket chết) → reconnect
 static void KASoftWakeIfStale(NSString *bundle) {
     if (!bundle.length) return;
     KAConfig *cfg = [KAConfig shared];
@@ -241,9 +244,9 @@ static void KASoftWakeIfStale(NSString *bundle) {
     }
     NSNumber *last = KALastWake()[bundle];
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    // 45 phút soft-wake: 45/90/135/180/225… → hỗ trợ ~4h+
-    if (last && (now - last.doubleValue) < 45 * 60) return;
-    KAOpenApp(bundle, @"soft-wake-45m");
+    // 3 phút/lần — user báo ~5p đã mất "đã nhận"
+    if (last && (now - last.doubleValue) < 3 * 60) return;
+    KAOpenApp(bundle, @"soft-wake-3m");
 }
 
 static void KARefreshAllIcons(void) {
@@ -262,7 +265,25 @@ static void KAWatchdogTick(void) {
     KARefreshAllIcons(); // cập nhật 🟢/🔴
 }
 
-// KHÔNG scene-freeze: freeze = Zalo chỉ kêu, không system popup
+// Scene freeze: giữ socket → "đã nhận" (audio-only ~5p chỉ "đã gửi")
+%hook FBScene
+- (void)updateSettings:(id)arg1 withTransitionContext:(id)arg2 completion:(id)arg3 {
+    FBProcess *p = self.clientProcess;
+    if (p && [[KAConfig shared] isImmortal:p.bundleIdentifier] && arg2 == nil) {
+        [[KAConfig shared] refreshIcon:p.bundleIdentifier];
+        return;
+    }
+    %orig;
+}
+%end
+
+%hook UIMutableApplicationSceneSettings
+- (void)setDeactivationReasons:(unsigned long long)arg1 {
+    if (arg1 != 0 && [KAConfig shared].enabled && [KAConfig shared].immortalIDs.count > 0)
+        return;
+    %orig;
+}
+%end
 
 %hook SBIconView
 // Không dùng hourglass/chấm vàng — dùng 🟢/🔴 trên tên (rõ hơn)
@@ -291,7 +312,7 @@ static void KAWatchdogTick(void) {
     BOOL on = [[KAConfig shared] isImmortal:bid];
     SBSApplicationShortcutItem *item = [[%c(SBSApplicationShortcutItem) alloc] init];
     item.localizedTitle = on ? @"Tắt KeepAlive" : @"Bật KeepAlive";
-    item.localizedSubtitle = on ? @"🟢 sống / 🔴 chết — ~4h" : @"Giữ Zalo2 sống ~4h";
+    item.localizedSubtitle = on ? @"🟢/🔴 · wake 3p · banner" : @"Giữ Zalo2 + popup";
     item.type = KA_SHORTCUT;
     item.bundleIdentifierToLaunch = bid;
     return [orig arrayByAddingObject:item];
@@ -420,11 +441,11 @@ static void KAWatchdogTick(void) {
 %hook SpringBoard
 - (void)applicationDidFinishLaunching:(id)app {
     %orig;
-    NSLog(@"[KeepAlive] v2.0 dual-IPA: 🟢/🔴 + ~4h soft-wake 45m");
+    NSLog(@"[KeepAlive] v2.2: freeze+audio+wake3m+local banner");
     dispatch_async(dispatch_get_main_queue(), ^{
-        [NSTimer scheduledTimerWithTimeInterval:8.0 repeats:YES
+        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES
             block:^(__unused NSTimer *t) { KAWatchdogTick(); }];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ KAWatchdogTick(); });
     });
 }
@@ -466,33 +487,36 @@ static void KASwizzle(id delegate) {
     [KASwizzled() addObject:name];
 }
 
-// Zalo chỉ kêu + tăng badge → tự bắn system banner
+// Zalo chỉ kêu (socket) → bắn system banner (popup)
 static void KAPostLocalBanner(NSString *body) {
+    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
+    if (![[KAConfig shared] isImmortal:me] && ![[KAConfig shared] enabled]) return;
+
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (now - gLastLocalBanner < 1.2) return; // chống spam
+    if (now - gLastLocalBanner < 1.5) return;
     gLastLocalBanner = now;
 
-    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-    [center requestAuthorizationWithOptions:
-        (UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
-        completionHandler:^(__unused BOOL g, __unused NSError *e) {}];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+        [center requestAuthorizationWithOptions:
+            (UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
+            completionHandler:^(__unused BOOL g, __unused NSError *e) {}];
 
-    UNMutableNotificationContent *content = [UNMutableNotificationContent new];
-    NSString *name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
-    if (!name.length)
-        name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
-    content.title = name.length ? name : @"Zalo";
-    content.body = body.length ? body : @"Bạn có tin nhắn mới";
-    content.sound = [UNNotificationSound defaultSound];
+        UNMutableNotificationContent *content = [UNMutableNotificationContent new];
+        NSString *name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+        if (!name.length)
+            name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+        content.title = name.length ? name : @"Zalo";
+        content.body = body.length ? body : @"Bạn có tin nhắn mới";
+        content.sound = [UNNotificationSound defaultSound];
 
-    UNTimeIntervalNotificationTrigger *tr =
-        [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:0.15 repeats:NO];
-    NSString *uid = [[NSUUID UUID] UUIDString];
-    UNNotificationRequest *req =
-        [UNNotificationRequest requestWithIdentifier:uid content:content trigger:tr];
-    [center addNotificationRequest:req withCompletionHandler:^(__unused NSError *err) {
-        NSLog(@"[KeepAlive] local banner posted");
-    }];
+        UNTimeIntervalNotificationTrigger *tr =
+            [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:0.1 repeats:NO];
+        UNNotificationRequest *req = [UNNotificationRequest
+            requestWithIdentifier:[[NSUUID UUID] UUIDString] content:content trigger:tr];
+        [center addNotificationRequest:req withCompletionHandler:nil];
+        NSLog(@"[KeepAlive] local banner: %@", body);
+    });
 }
 
 %hook UNUserNotificationCenter
@@ -523,6 +547,21 @@ static void KAPostLocalBanner(NSString *body) {
     }
 }
 %end
+
+// Zalo kêu bằng system sound → cũng bắn banner
+%hookf(void, AudioServicesPlaySystemSound, SystemSoundID sid) {
+    %orig;
+    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
+    if ([[KAConfig shared] isImmortal:me])
+        KAPostLocalBanner(@"Tin nhắn mới");
+}
+
+%hookf(void, AudioServicesPlayAlertSound, SystemSoundID sid) {
+    %orig;
+    NSString *me = [[NSBundle mainBundle] bundleIdentifier];
+    if ([[KAConfig shared] isImmortal:me])
+        KAPostLocalBanner(@"Tin nhắn mới");
+}
 
 %end // InApp
 
