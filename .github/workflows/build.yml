@@ -1,4 +1,5 @@
-# 1 bản rootless — Dopamine / RootHide đều dùng được
+# 1 bản rootless — Dopamine + RootHide
+# Setup Theos thủ công (beerpiss/theos-action toolchain cũ đã hỏng)
 name: Build
 
 on:
@@ -10,27 +11,55 @@ on:
 jobs:
   build:
     name: Build rootless deb
-    # 22.04: toolchain Theos Linux còn hỗ trợ (24.04 = ubuntu-latest sẽ vỡ)
     runs-on: ubuntu-22.04
+    env:
+      THEOS: ${{ github.workspace }}/theos
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Theos
-        uses: beerpiss/theos-action@v1
-        with:
-          cache: true
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential fakeroot rsync curl perl git libxml2 libz3-dev unzip xz-utils
 
-      - name: Build
+      - name: Cache Theos
+        id: cache-theos
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.THEOS }}
+          key: theos-linux-v2.3.0-sdks-${{ hashFiles('.github/workflows/build.yml') }}
+
+      - name: Install Theos + toolchain + SDKs
+        if: steps.cache-theos.outputs.cache-hit != 'true'
         run: |
           set -eux
-          export THEOS="${THEOS:-$GITHUB_WORKSPACE/theos}"
-          export PATH="$THEOS/bin:$PATH"
-          make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-          ls -lah packages/
-          test -n "$(ls packages/*.deb 2>/dev/null)"
+          git clone --depth=1 --recursive https://github.com/theos/theos.git "$THEOS"
+          mkdir -p "$THEOS/toolchain"
+          curl -fL --retry 3 -o /tmp/toolchain.tar.xz \
+            "https://github.com/kabiroberai/swift-toolchain-linux/releases/download/v2.3.0/swift-5.8-ubuntu22.04.tar.xz"
+          tar -xJf /tmp/toolchain.tar.xz -C "$THEOS/toolchain"
+          # layout: toolchain/linux/iphone often expected
+          if [ ! -d "$THEOS/toolchain/linux/iphone" ]; then
+            # v2.3 tarball may extract as linux/iphone already under toolchain
+            ls -la "$THEOS/toolchain"
+            find "$THEOS/toolchain" -maxdepth 3 -type d | head -40
+          fi
+          # SDKs
+          git clone --depth=1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          ls "$THEOS/sdks" | head
 
-      - name: Upload KeepAlive.deb
+      - name: Build KeepAlive (rootless)
+        run: |
+          set -eux
+          export PATH="$THEOS/bin:$PATH"
+          # drop arm64e if toolchain lacks it (Makefile already arm64 only)
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless -j"$(nproc)"
+          ls -lah packages/
+          test "$(ls packages/*.deb 2>/dev/null | wc -l)" -gt 0
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: KeepAlive-rootless
