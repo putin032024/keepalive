@@ -89,6 +89,12 @@
 - (void)setKillable:(BOOL)killable;
 @end
 
+@interface SBFolderView : UIView
+@property (nonatomic, retain) SBFolder *folder;
+- (void)willTransitionAnimated:(BOOL)arg1 withSettings:(id)arg2;
+- (void)didTransitionAnimated:(BOOL)arg1;
+@end
+
 @interface UIMutableApplicationSceneSettings : NSObject
 - (void)setDeactivationReasons:(unsigned long long)reasons;
 @end

@@ -98,8 +98,14 @@ static BOOL gFolder = NO;
 %end
 
 %hook SBFolderView
-- (void)willTransitionAnimated:(BOOL)a withSettings:(id)s { gFolder = YES; %orig; }
-- (void)didTransitionAnimated:(BOOL)a { gFolder = NO; %orig; }
+- (void)willTransitionAnimated:(BOOL)a withSettings:(id)s {
+    gFolder = YES;
+    %orig;
+}
+- (void)didTransitionAnimated:(BOOL)a {
+    gFolder = NO;
+    %orig;
+}
 %end
 
 // Chặn vuốt kill app đang KeepAlive

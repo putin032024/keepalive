@@ -51,7 +51,8 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         Class c = objc_getClass("SBIconController");
         if (!c) return;
-        SBIcon *icon = [[c sharedInstance].model applicationIconForBundleIdentifier:bundle];
+        SBIconController *ic = (SBIconController *)[c sharedInstance];
+        SBIcon *icon = [ic.model applicationIconForBundleIdentifier:bundle];
         [icon _notifyAccessoriesDidUpdate];
     });
 }
