@@ -1,0 +1,62 @@
+Zalo2KeepAlive — tiêm vào Zalo ĐỔI BUNDLE (không cần tweak hệ thống)
+======================================================================
+
+LÀM GÌ
+  Dylib nằm TRONG app Zalo2. Mở Zalo2 là tự giữ nền (silent audio).
+  Không hold icon, không Settings KeepAlive, không Immortalizer.
+
+KHÔNG LÀM ĐƯỢC
+  Vuốt kill Zalo2 = process chết = dylib chết.
+  (Muốn tự mở lại sau kill → mới cần tweak SpringBoard.)
+
+------------------------------------------------------------
+CÁCH 1: TrollFools (nhanh, trên máy)
+------------------------------------------------------------
+1) Build ra Zalo2KeepAlive.dylib (Actions artifact hoặc Mac ./build.sh)
+2) Cài TrollFools (TrollStore)
+3) TrollFools → chọn app ZALO 2 (bundle đã đổi) → Inject
+4) Chọn Zalo2KeepAlive.dylib (hoặc zip)
+5) Mở Zalo2 1 lần → về Home (ĐỪNG vuốt kill)
+6) Test nhắn tin
+
+Gỡ: TrollFools → Zalo2 → Eject
+
+------------------------------------------------------------
+CÁCH 2: Sửa IPA rồi cài lại (một lần)
+------------------------------------------------------------
+1) Giải nén Zalo2.ipa
+2) copy Zalo2KeepAlive.dylib vào Payload/Zalo.app/Frameworks/ (tạo folder nếu thiếu)
+3) insert_dylib / optool / vtool inject load command vào binary Zalo
+   (hoặc dùng TrollFools một lần rồi dump lại app đã inject)
+4) (Khuyên) Sửa Info.plist thêm UIBackgroundModes:
+     - audio
+     - fetch
+     - remote-notification
+5) Ký lại + cài TrollStore
+
+------------------------------------------------------------
+NÊN LÀM THÊM KHI REPACK IPA
+------------------------------------------------------------
+Info.plist → UIBackgroundModes (array):
+  audio
+  fetch  
+  processing
+  remote-notification
+
+Giúp iOS cho app chạy nền lâu hơn khi đã inject dylib.
+
+------------------------------------------------------------
+DÙNG HÀNG NGÀY
+------------------------------------------------------------
+- Acc chính: Zalo bundle GỐC (App Store) — notif kill OK
+- Acc 2: Zalo bundle LẠ + dylib này — mở 1 lần, để đa nhiệm, đừng kill
+- Không cần bật Immortalizer / KeepAlive system tweak cho Zalo2
+
+------------------------------------------------------------
+SO VỚI TWEAK KeepAlive HỆ THỐNG
+------------------------------------------------------------
+Tiem dylib:   chỉ Zalo2, gọn, không Settings
+Tweak SB:     có auto-relaunch sau kill, soft-wake — nhưng phiền hơn
+
+Chọn TIÊM nếu m chịu "đừng kill Zalo2".
+Chọn TWEAK nếu cần tự sống lại sau kill.
