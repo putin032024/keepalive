@@ -225,7 +225,7 @@ static void KAPrefs(CFNotificationCenterRef c, void *o, CFStringRef n,
     [[KAConfig shared] reload];
     CFNotificationCenterAddObserver(
         CFNotificationCenterGetDarwinNotifyCenter(), NULL, KAPrefs,
-        CFSTR(KA_NOTIFY), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFSTR(KA_NOTIFY_CSTR), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
 
     NSString *bid = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
     if ([bid isEqualToString:@"com.apple.springboard"]) {

@@ -1,7 +1,8 @@
 #import <Foundation/Foundation.h>
 
 #define KA_PREFS @"com.local.keepalive.prefs"
-#define KA_NOTIFY @"com.local.keepalive.prefschanged"
+#define KA_NOTIFY_CSTR "com.local.keepalive.prefschanged"
+#define KA_NOTIFY @KA_NOTIFY_CSTR
 
 // List app đang immortal (giống Immortalizer)
 #define KA_IMMORTAL_KEY @"KeepAliveImmortalBundleIDs"
