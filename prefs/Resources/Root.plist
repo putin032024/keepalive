@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>AlwaysAlive</string>
+			<key>footerText</key>
+			<string>Giữ app sống (kiểu Immortalizer) + ép hiện banner/popup. Hold icon app → Bật AlwaysAlive.</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.local.keepalive.prefs</string>
+			<key>key</key>
+			<string>enabled</string>
+			<key>label</key>
+			<string>Bật tweak</string>
+			<key>PostNotification</key>
+			<string>com.local.keepalive.prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.local.keepalive.prefs</string>
+			<key>key</key>
+			<string>forceBanner</string>
+			<key>label</key>
+			<string>Ép hiện popup/banner</string>
+			<key>PostNotification</key>
+			<string>com.local.keepalive.prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.local.keepalive.prefs</string>
+			<key>key</key>
+			<string>indicator</string>
+			<key>label</key>
+			<string>Indicator trên icon</string>
+			<key>PostNotification</key>
+			<string>com.local.keepalive.prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.local.keepalive.prefs</string>
+			<key>key</key>
+			<string>lockFromKill</string>
+			<key>label</key>
+			<string>Chặn vuốt kill (app immortal)</string>
+			<key>PostNotification</key>
+			<string>com.local.keepalive.prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>Cách dùng: hold icon Zalo/Messenger → Bật AlwaysAlive. Cài đặt → AlwaysAlive → bật Ép popup. Build: make package THEOS_PACKAGE_SCHEME=rootless</string>
+		</dict>
+	</array>
+	<key>title</key>
+	<string>AlwaysAlive</string>
+</dict>
+</plist>

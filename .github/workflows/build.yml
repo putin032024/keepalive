@@ -1,0 +1,83 @@
+name: Build KeepAlive
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build-rootless:
+    name: Rootless (Dopamine)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Theos
+        uses: beerpiss/theos-action@v1
+
+      - name: Build rootless
+        run: |
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          mkdir -p dist
+          for f in packages/*.deb; do
+            [ -f "$f" ] || continue
+            cp -f "$f" "dist/keepalive-rootless-$(basename "$f")"
+          done
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keepalive-rootless
+          path: dist/*.deb
+          if-no-files-found: error
+
+  build-rootful:
+    name: Rootful
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Theos
+        uses: beerpiss/theos-action@v1
+
+      - name: Build rootful
+        run: |
+          make clean || true
+          # rootful arch in control
+          sed -i '' 's/iphoneos-arm64/iphoneos-arm/g' control
+          # force no package scheme
+          make package FINALPACKAGE=1 SCHEME=rootful THEOS_PACKAGE_SCHEME=
+          mkdir -p dist
+          for f in packages/*.deb; do
+            [ -f "$f" ] || continue
+            cp -f "$f" "dist/keepalive-rootful-$(basename "$f")"
+          done
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keepalive-rootful
+          path: dist/*.deb
+          if-no-files-found: error
+
+  release:
+    name: Attach to GitHub Release
+    needs: [build-rootless, build-rootful]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

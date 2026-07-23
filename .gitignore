@@ -1,0 +1,9 @@
+.theos/
+packages/
+*.deb
+.DS_Store
+*.swp
+theos/
+.idea/
+xcuserdata/
+*.xcuserstate

@@ -1,0 +1,34 @@
+AlwaysAlive — map sửa nhanh
+===========================
+
+GIỮ APP SỐNG:
+  TweakScene.x
+  - FBScene updateSettings: return sớm = không deactivate
+  - setDeactivationReasons: chặn reason != 0
+
+ÉP POPUP:
+  TweakNotifications.x
+  - SpringBoard: willPresentNotification + OR AA_PRESENT_ALL
+  - App: swizzle willPresent trên delegate
+  - Đổi mask: AAConfig.h → AA_PRESENT_ALL
+
+MENU / ICON / CHỐNG KILL:
+  TweakIcons.x
+  - AA_SHORTCUT_TYPE title
+  - setKillable:NO khi immortal
+
+PREFS / LIST APP:
+  AAConfig.h  — key, suite name
+  AAConfig.m  — toggleImmortal, isImmortal
+  prefs/Resources/Root.plist — UI Settings
+
+BUILD:
+  Mac + Theos
+  cd AlwaysAlive && make package
+  THEOS_PACKAGE_SCHEME=rootless (Dopamine)
+
+DÙNG:
+  1. Tắt Immortalizer (tránh conflict)
+  2. Cài AlwaysAlive, respring
+  3. Settings → AlwaysAlive → bật "Ép hiện popup"
+  4. Hold Zalo → Bật AlwaysAlive
