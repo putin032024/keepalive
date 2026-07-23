@@ -1,6 +1,5 @@
-// KeepAlive — 1 tweak duy nhất:
-//  1) Immortal: giữ app sống (như Immortalizer) — hold icon bật, ĐỂ BẬT
-//  2) Popup: BẮT BUỘC luôn ép banner — không tách tweak phụ, không cho tắt
+// KeepAlive — immortal + force popup
+// Load OK: hiện toast "KeepAlive OK" trên SpringBoard (biết dylib đã chạy)
 
 #import "KAConfig.h"
 #import "Headers.h"
@@ -9,7 +8,33 @@
 
 static BOOL gFolder = NO;
 
-#pragma mark - ===== IMMORTAL (giữ sống) =====
+static void KAShowLoadedToast(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Toast đơn giản qua UIAlert (1 lần mỗi respring)
+        static BOOL shown = NO;
+        if (shown) return;
+        shown = YES;
+
+        UIWindow *win = nil;
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            if (w.isKeyWindow) { win = w; break; }
+        }
+        if (!win) win = [UIApplication sharedApplication].windows.firstObject;
+        UIViewController *root = win.rootViewController;
+        while (root.presentedViewController) root = root.presentedViewController;
+        if (!root) return;
+
+        UIAlertController *ac = [UIAlertController
+            alertControllerWithTitle:@"KeepAlive"
+            message:@"Tweak đã load vào SpringBoard.\nHold icon app → Bật KeepAlive."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [ac addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [root presentViewController:ac animated:YES completion:nil];
+        NSLog(@"[KeepAlive] SpringBoard loaded OK");
+    });
+}
+
+#pragma mark - IMMORTAL
 
 %group SpringBoardCore
 
@@ -55,32 +80,40 @@ static BOOL gFolder = NO;
 }
 
 - (NSArray *)applicationShortcutItems {
-    NSArray *orig = %orig;
+    NSArray *orig = %orig ?: @[];
     if (![KAConfig shared].enabled) return orig;
-    NSString *bid = [self.icon applicationBundleID];
+
+    NSString *bid = nil;
+    if ([self.icon respondsToSelector:@selector(applicationBundleID)])
+        bid = [self.icon applicationBundleID];
+    if (!bid.length && [self respondsToSelector:@selector(applicationBundleIdentifierForShortcuts)])
+        bid = [(id)self applicationBundleIdentifierForShortcuts];
+    if (!bid.length && [self respondsToSelector:@selector(applicationBundleIdentifier)])
+        bid = [(id)self applicationBundleIdentifier];
     if (!bid.length) return orig;
 
     BOOL on = [[KAConfig shared] isImmortal:bid];
     SBSApplicationShortcutItem *item = [[%c(SBSApplicationShortcutItem) alloc] init];
-    item.localizedTitle = on ? @"Tắt KeepAlive" : @"Bật KeepAlive (giữ nền + popup)";
-    item.localizedSubtitle = @"Immortal + luôn hiện banner";
+    item.localizedTitle = on ? @"Tắt KeepAlive" : @"Bật KeepAlive";
+    item.localizedSubtitle = @"Giữ nền + luôn popup";
     item.type = KA_SHORTCUT;
+    item.bundleIdentifierToLaunch = bid;
     if (@available(iOS 13.0, *)) {
         UIImage *img = [UIImage systemImageNamed:@"bolt.horizontal.circle.fill"];
         if (img) {
             item.icon = [[%c(SBSApplicationShortcutCustomImageIcon) alloc]
-                         initWithImageData:UIImagePNGRepresentation(img) dataType:0 isTemplate:YES];
+                initWithImageData:UIImagePNGRepresentation(img) dataType:0 isTemplate:YES];
         }
     }
-    item.bundleIdentifierToLaunch = bid;
     return [orig arrayByAddingObject:item];
 }
 
 + (void)activateShortcut:(SBSApplicationShortcutItem *)item
     withBundleIdentifier:(NSString *)bundleID
              forIconView:(id)iconView {
-    if ([item.type isEqualToString:KA_SHORTCUT]) {
-        [[KAConfig shared] toggleImmortal:bundleID];
+    if (item && [item.type isEqualToString:KA_SHORTCUT]) {
+        NSString *bid = bundleID ?: item.bundleIdentifierToLaunch;
+        [[KAConfig shared] toggleImmortal:bid];
         return;
     }
     %orig;
@@ -111,7 +144,6 @@ static BOOL gFolder = NO;
 }
 %end
 
-// Chặn vuốt kill app đang KeepAlive
 %hook SBFluidSwitcherItemContainer
 - (void)setKillable:(BOOL)arg1 {
     BOOL k = arg1;
@@ -140,15 +172,10 @@ static BOOL gFolder = NO;
 }
 %end
 
-#pragma mark - ===== POPUP BẮT BUỘC (core, không tắt) =====
-// App immortal = foreground → iOS chỉ kêu. Ép banner tại đây — luôn chạy.
-
 %hook UNSUserNotificationServer
 - (void)willPresentNotification:(id)notif
             forBundleIdentifier:(NSString *)bundle
           withCompletionHandler:(id)handler {
-
-    // Mọi app đang KeepAlive: LUÔN ép popup (không có cờ tắt)
     if ([[KAConfig shared] isImmortal:bundle]) {
         [self _didChangeApplicationState:4 forBundleIdentifier:bundle];
         void (^orig)(NSUInteger) = handler;
@@ -162,9 +189,19 @@ static BOOL gFolder = NO;
 }
 %end
 
+%hook SpringBoard
+- (void)applicationDidFinishLaunching:(id)app {
+    %orig;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        KAShowLoadedToast();
+    });
+}
+%end
+
 %end // SpringBoardCore
 
-#pragma mark - In-app willPresent (Zalo hay nuốt banner)
+#pragma mark - In-app popup force
 
 %group InAppPopup
 
@@ -179,7 +216,6 @@ static void (*KAOrigWP)(id, SEL, id, id, void (^)(NSUInteger)) = NULL;
 
 static void KAHookedWP(id self, SEL _cmd, UNUserNotificationCenter *c,
                        UNNotification *n, void (^completion)(NSUInteger)) {
-    // Trong app KeepAlive: LUÔN ép options có banner
     void (^wrap)(NSUInteger) = ^(NSUInteger o) {
         if (completion) completion(o | KA_PRESENT_ALL);
     };
@@ -222,19 +258,20 @@ static void KAPrefs(CFNotificationCenterRef c, void *o, CFStringRef n,
 }
 
 %ctor {
-    [[KAConfig shared] reload];
-    CFNotificationCenterAddObserver(
-        CFNotificationCenterGetDarwinNotifyCenter(), NULL, KAPrefs,
-        CFSTR(KA_NOTIFY_CSTR), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    @autoreleasepool {
+        [[KAConfig shared] reload];
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(), NULL, KAPrefs,
+            CFSTR(KA_NOTIFY_CSTR), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
 
-    NSString *bid = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
-    if ([bid isEqualToString:@"com.apple.springboard"]) {
-        %init(SpringBoardCore);
-    } else {
-        %init(InAppPopup);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            KASwizzle([UNUserNotificationCenter currentNotificationCenter].delegate);
-        });
+        NSString *bid = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
+        NSLog(@"[KeepAlive] ctor in %@", bid);
+
+        if ([bid isEqualToString:@"com.apple.springboard"]) {
+            %init(SpringBoardCore);
+            NSLog(@"[KeepAlive] SpringBoard hooks installed");
+        } else {
+            %init(InAppPopup);
+        }
     }
 }

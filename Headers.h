@@ -98,3 +98,13 @@
 @interface UIMutableApplicationSceneSettings : NSObject
 - (void)setDeactivationReasons:(unsigned long long)reasons;
 @end
+
+@interface SpringBoard : UIApplication
+- (void)applicationDidFinishLaunching:(id)application;
+@end
+
+@interface SBIconView (KeepAlive)
+- (NSString *)applicationBundleIdentifierForShortcuts;
+- (NSString *)applicationBundleIdentifier;
+@end
+

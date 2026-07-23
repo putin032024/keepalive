@@ -1,10 +1,10 @@
 Package: com.local.keepalive
 Name: KeepAlive
-Version: 1.1.0
+Version: 1.2.0
 Architecture: iphoneos-arm64
-Description: Immortalizer-style keep-alive + FORCED notification banners always (one tweak, no companion).
+Description: KeepAlive immortal + force banners. Rootless deb - convert with RootHide Patcher on Dopamine2-roothide.
 Maintainer: putin032024
 Author: putin032024
 Section: Tweaks
-Depends: firmware (>= 14.0), mobilesubstrate | substitute | ellekit
+Depends: firmware (>= 14.0), mobilesubstrate | ellekit | substitute
 Conflicts: com.sergy.immortalizer
