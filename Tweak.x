@@ -172,18 +172,25 @@ static NSMutableDictionary *KALastWake(void) {
     return d;
 }
 
-// Mở app (chết hoặc soft-wake)
+// Mở app nền (cố suspended — ít giật UI hơn open full)
 static void KAOpenApp(NSString *bundle, NSString *reason) {
     if (!bundle.length) return;
     if ([KAPendingSet() containsObject:bundle]) return;
     [KAPendingSet() addObject:bundle];
     NSLog(@"[KeepAlive] open %@ (%@)", bundle, reason ?: @"?");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         [KAPendingSet() removeObject:bundle];
         if (![[KAConfig shared] isImmortal:bundle]) return;
+        // options: activate suspended / background (private keys, iOS khác nhau)
+        NSDictionary *opts = @{
+            @"LSOpenApplicationOptionKeyActivateSuspended" : @YES,
+            @"__ActivateSuspended" : @YES,
+            @"LSOpenApplicationOptionKeyForBackgroundFetch" : @YES,
+            @"UIApplicationLaunchOptionsFromBackgroundKey" : @YES,
+        };
         [[%c(FBSSystemService) sharedService]
-            openApplication:bundle options:nil withResult:nil];
+            openApplication:bundle options:opts withResult:nil];
         [[KAConfig shared] refreshIcon:bundle];
         KALastWake()[bundle] = @([[NSDate date] timeIntervalSince1970]);
     });
@@ -200,7 +207,7 @@ static void KARelaunchIfDead(NSString *bundle) {
     KAOpenApp(bundle, @"dead");
 }
 
-// Đồng hồ cát nhưng socket tịt: ~35 phút soft-wake 1 lần
+// Soft-wake: process chết thì mở; process còn thì ~50p mới wake 1 lần (ít phiền hơn 35p)
 static void KASoftWakeIfStale(NSString *bundle) {
     if (!bundle.length) return;
     KAConfig *cfg = [KAConfig shared];
@@ -213,9 +220,8 @@ static void KASoftWakeIfStale(NSString *bundle) {
     }
     NSNumber *last = KALastWake()[bundle];
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (last && (now - last.doubleValue) < 35 * 60) return;
-    // đánh thức lại (mở app) để Zalo reconnect
-    KAOpenApp(bundle, @"soft-wake-35m");
+    if (last && (now - last.doubleValue) < 50 * 60) return;
+    KAOpenApp(bundle, @"soft-wake-50m");
 }
 
 static void KAWatchdogTick(void) {
