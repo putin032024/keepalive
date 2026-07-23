@@ -1,6 +1,6 @@
 Package: com.local.keepalive
 Name: KeepAlive
-Version: 1.6.0
+Version: 1.7.0
 Architecture: iphoneos-arm64
 Description: Silent-audio keep-alive + auto-relaunch when process dies (hourglass vs yellow dot). RootHide Patcher.
 Maintainer: putin032024
