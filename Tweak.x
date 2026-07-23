@@ -65,10 +65,13 @@ static BOOL gFolder = NO;
     item.localizedTitle = on ? @"Tắt KeepAlive" : @"Bật KeepAlive (giữ nền + popup)";
     item.localizedSubtitle = @"Immortal + luôn hiện banner";
     item.type = KA_SHORTCUT;
-    UIImage *img = [UIImage systemImageNamed:@"bolt.horizontal.circle.fill"];
-    if (img)
-        item.icon = [[%c(SBSApplicationShortcutCustomImageIcon) alloc]
-                     initWithImageData:UIImagePNGRepresentation(img) dataType:0 isTemplate:YES];
+    if (@available(iOS 13.0, *)) {
+        UIImage *img = [UIImage systemImageNamed:@"bolt.horizontal.circle.fill"];
+        if (img) {
+            item.icon = [[%c(SBSApplicationShortcutCustomImageIcon) alloc]
+                         initWithImageData:UIImagePNGRepresentation(img) dataType:0 isTemplate:YES];
+        }
+    }
     item.bundleIdentifierToLaunch = bid;
     return [orig arrayByAddingObject:item];
 }
@@ -198,8 +201,15 @@ static void KASwizzle(id delegate) {
 }
 
 %hook UNUserNotificationCenter
-- (void)setDelegate:(id)d { KASwizzle(d); %orig; }
-- (id)delegate { id d = %orig; KASwizzle(d); return d; }
+- (void)setDelegate:(id)d {
+    KASwizzle(d);
+    %orig;
+}
+- (id)delegate {
+    id d = %orig;
+    KASwizzle(d);
+    return d;
+}
 %end
 
 %end
