@@ -1,9 +1,6 @@
-// KeepAlive v1.7 — hybrid (bản audio-only ~1h tịt, giờ gộp lại):
-//  1) Scene freeze kiểu Immortalizer (giữ socket lâu)
-//  2) Silent audio + bg task (lớp phụ)
-//  3) Force "not foreground" cho system banner
-//  4) Auto-relaunch khi process chết (chấm vàng)
-//  5) Soft wake mỗi ~35p (process còn nhưng socket Zalo chết)
+// KeepAlive v2.0 — Zalo2 (đổi bundle) dual-IPA mode
+// Mục tiêu: sống ~4 tiếng; 🟢 = đang sống; 🔴 = đã chết (mở lại app)
+// Scene freeze + silent audio + relaunch + soft-wake ~45p
 
 #import "KAConfig.h"
 #import "Headers.h"
@@ -117,8 +114,7 @@ static void KAStartIfNeeded(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         KATick();
         if (!gTimer) {
-            // renew audio/bg task thường xuyên hơn
-            gTimer = [NSTimer timerWithTimeInterval:10.0 repeats:YES
+            gTimer = [NSTimer timerWithTimeInterval:8.0 repeats:YES
                 block:^(__unused NSTimer *t) { KATick(); }];
             [[NSRunLoop mainRunLoop] addTimer:gTimer forMode:NSRunLoopCommonModes];
         }
@@ -232,7 +228,7 @@ static void KARelaunchIfDead(NSString *bundle) {
     KAOpenApp(bundle, @"dead");
 }
 
-// Soft-wake: process chết thì mở; process còn thì ~50p mới wake 1 lần (ít phiền hơn 35p)
+// Soft-wake ~45 phút/lần để kéo socket ~4 tiếng (trước khi tịt)
 static void KASoftWakeIfStale(NSString *bundle) {
     if (!bundle.length) return;
     KAConfig *cfg = [KAConfig shared];
@@ -245,8 +241,15 @@ static void KASoftWakeIfStale(NSString *bundle) {
     }
     NSNumber *last = KALastWake()[bundle];
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (last && (now - last.doubleValue) < 50 * 60) return;
-    KAOpenApp(bundle, @"soft-wake-50m");
+    // 45 phút soft-wake: 45/90/135/180/225… → hỗ trợ ~4h+
+    if (last && (now - last.doubleValue) < 45 * 60) return;
+    KAOpenApp(bundle, @"soft-wake-45m");
+}
+
+static void KARefreshAllIcons(void) {
+    for (NSString *bid in [[KAConfig shared] immortalIDs]) {
+        [[KAConfig shared] refreshIcon:bid];
+    }
 }
 
 static void KAWatchdogTick(void) {
@@ -256,6 +259,7 @@ static void KAWatchdogTick(void) {
         KARelaunchIfDead(bid);
         KASoftWakeIfStale(bid);
     }
+    KARefreshAllIcons(); // cập nhật 🟢/🔴
 }
 
 // === Immortalizer-style: chặn deactivate scene (giữ sống lâu hơn audio-only) ===
@@ -279,18 +283,17 @@ static void KAWatchdogTick(void) {
 %end
 
 %hook SBIconView
+// Không dùng hourglass/chấm vàng — dùng 🟢/🔴 trên tên (rõ hơn)
 - (long long)currentLabelAccessoryType {
     long long a = %orig;
     KAConfig *c = [KAConfig shared];
-    if (!c.enabled) return a;
     NSString *bid = [self.icon applicationBundleID];
-    if (bid && [c isImmortal:bid]) {
+    if (c.enabled && bid && [c isImmortal:bid]) {
         SBApplication *app = [[%c(SBApplicationController) sharedInstance]
                               applicationWithBundleIdentifier:bid];
-        a = app.processState ? 4 : 2;
-        // chấm vàng = chết → schedule relaunch
         if (!app.processState)
             KARelaunchIfDead(bid);
+        // giữ accessory gốc, status = emoji trên displayName
     }
     return a;
 }
@@ -306,7 +309,7 @@ static void KAWatchdogTick(void) {
     BOOL on = [[KAConfig shared] isImmortal:bid];
     SBSApplicationShortcutItem *item = [[%c(SBSApplicationShortcutItem) alloc] init];
     item.localizedTitle = on ? @"Tắt KeepAlive" : @"Bật KeepAlive";
-    item.localizedSubtitle = on ? @"Scene+audio+relaunch" : @"Giữ sống + banner";
+    item.localizedSubtitle = on ? @"🟢 sống / 🔴 chết — ~4h" : @"Giữ Zalo2 sống ~4h";
     item.type = KA_SHORTCUT;
     item.bundleIdentifierToLaunch = bid;
     return [orig arrayByAddingObject:item];
@@ -327,22 +330,37 @@ static void KAWatchdogTick(void) {
 %end
 
 %hook SBApplication
+// 🟢 = process sống (đang KeepAlive); 🔴 = chết hẳn → vào mở lại
+- (NSString *)displayName {
+    NSString *n = %orig ?: @"";
+    NSString *bid = self.bundleIdentifier;
+    if (![[KAConfig shared] isImmortal:bid]) return n;
+
+    // tránh cộng dồn emoji
+    n = [n stringByReplacingOccurrencesOfString:@" 🟢" withString:@""];
+    n = [n stringByReplacingOccurrencesOfString:@" 🔴" withString:@""];
+    n = [n stringByReplacingOccurrencesOfString:@"🟢" withString:@""];
+    n = [n stringByReplacingOccurrencesOfString:@"🔴" withString:@""];
+    n = [n stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+
+    if (self.processState != nil)
+        return [n stringByAppendingString:@" 🟢"];
+    return [n stringByAppendingString:@" 🔴"];
+}
+
 - (long long)labelAccessoryTypeForIcon:(id)arg1 {
     long long a = %orig;
-    if ([[KAConfig shared] isImmortal:self.bundleIdentifier]) {
-        a = self.processState ? 4 : 2;
-        if (!self.processState)
-            KARelaunchIfDead(self.bundleIdentifier);
-    }
+    if ([[KAConfig shared] isImmortal:self.bundleIdentifier] && !self.processState)
+        KARelaunchIfDead(self.bundleIdentifier);
     return a;
 }
+
 - (void)_didExitWithContext:(id)arg1 {
     NSString *bid = self.bundleIdentifier;
     %orig;
     [[KAConfig shared] refreshIcon:bid];
-    // Vuốt kill / jetsam → mở LẠI NGAY (đây là cách duy nhất khi không có APNs)
     if ([[KAConfig shared] isImmortal:bid]) {
-        NSLog(@"[KeepAlive] %@ EXIT — instant relaunch", bid);
+        NSLog(@"[KeepAlive] %@ EXIT — relaunch + 🔴", bid);
         KAOpenApp(bid, @"exit");
     }
 }
@@ -420,9 +438,8 @@ static void KAWatchdogTick(void) {
 %hook SpringBoard
 - (void)applicationDidFinishLaunching:(id)app {
     %orig;
-    NSLog(@"[KeepAlive] SB ready — kill=instant relaunch (no APNs for renamed bundle)");
+    NSLog(@"[KeepAlive] v2.0 dual-IPA: 🟢/🔴 + ~4h soft-wake 45m");
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Watchdog dày: vuốt nhầm → vài giây là sống lại
         [NSTimer scheduledTimerWithTimeInterval:8.0 repeats:YES
             block:^(__unused NSTimer *t) { KAWatchdogTick(); }];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
