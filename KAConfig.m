@@ -14,19 +14,35 @@
     return s;
 }
 
+- (NSUserDefaults *)sharedDefaults {
+    return [[NSUserDefaults alloc] initWithSuiteName:KA_SHARED];
+}
+
 - (void)reload {
     NSUserDefaults *p = [[NSUserDefaults alloc] initWithSuiteName:KA_PREFS];
     self.enabled = [p objectForKey:KA_KEY_ENABLED] ? [p boolForKey:KA_KEY_ENABLED] : YES;
 }
 
 - (NSMutableArray<NSString *> *)immortalIDs {
-    NSArray *a = [[NSUserDefaults standardUserDefaults] arrayForKey:KA_IMMORTAL_KEY];
+    NSArray *a = [[self sharedDefaults] arrayForKey:KA_IMMORTAL_KEY];
+    // migrate old key from standardUserDefaults if any
+    if (!a.count) {
+        a = [[NSUserDefaults standardUserDefaults] arrayForKey:@"KeepAliveImmortalBundleIDs"];
+    }
     return a ? [a mutableCopy] : [NSMutableArray array];
 }
 
 - (void)saveImmortalIDs:(NSArray<NSString *> *)ids {
-    [[NSUserDefaults standardUserDefaults] setObject:ids forKey:KA_IMMORTAL_KEY];
+    NSUserDefaults *d = [self sharedDefaults];
+    [d setObject:ids forKey:KA_IMMORTAL_KEY];
+    [d synchronize];
+    // cũng ghi standard (SpringBoard) để tương thích
+    [[NSUserDefaults standardUserDefaults] setObject:ids forKey:@"KeepAliveImmortalBundleIDs"];
     [[NSUserDefaults standardUserDefaults] synchronize];
+    // Darwin notify apps reload
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR(KA_NOTIFY_CSTR), NULL, NULL, true);
 }
 
 - (BOOL)isImmortal:(NSString *)bundle {
@@ -39,9 +55,13 @@
     NSMutableArray *ids = [self immortalIDs];
     if ([ids containsObject:bundle]) {
         [ids removeObject:bundle];
+        NSLog(@"[KeepAlive] OFF %@", bundle);
     } else {
         [ids addObject:bundle];
-        [[objc_getClass("FBSSystemService") sharedService] openApplication:bundle options:nil withResult:nil];
+        NSLog(@"[KeepAlive] ON %@", bundle);
+        // Mở app 1 lần rồi user về Home — process sống + audio nền
+        [[objc_getClass("FBSSystemService") sharedService]
+            openApplication:bundle options:nil withResult:nil];
     }
     [self saveImmortalIDs:ids];
     [self refreshIcon:bundle];

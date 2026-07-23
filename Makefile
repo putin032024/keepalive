@@ -11,7 +11,7 @@ TWEAK_NAME = KeepAlive
 
 KeepAlive_FILES = Tweak.x KAConfig.m
 KeepAlive_CFLAGS = -fobjc-arc -Wno-unused-variable -Wno-deprecated-declarations -Wno-unguarded-availability-new
-KeepAlive_FRAMEWORKS = UIKit Foundation UserNotifications CoreGraphics
+KeepAlive_FRAMEWORKS = UIKit Foundation UserNotifications CoreGraphics AVFoundation
 KeepAlive_ARCHS = arm64 arm64e
 KeepAlive_LOGOS_DEFAULT_GENERATOR = internal
 

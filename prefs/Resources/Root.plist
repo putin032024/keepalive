@@ -10,7 +10,7 @@
 			<key>label</key>
 			<string>KeepAlive</string>
 			<key>footerText</key>
-			<string>Bật tweak. Hold icon app (Zalo…) → Bật KeepAlive để giữ nền + ép popup. Giống Immortalizer: để BẬT, đừng tắt. RootHide: convert deb bằng RootHide Patcher rồi cài Sileo + respring. Sau respring nếu load OK sẽ có alert KeepAlive.</string>
+			<string>v1.5: giữ app bằng silent audio (KHÔNG fake foreground) để còn banner hệ thống. Hold icon → Bật KeepAlive → mở app 1 lần → về Home. RootHide: Patcher → Sileo → respring. Hao pin hơn một chút.</string>
 		</dict>
 		<dict>
 			<key>cell</key>
