@@ -10,7 +10,7 @@
 			<key>label</key>
 			<string>KeepAlive</string>
 			<key>footerText</key>
-			<string>1 TWEAK duy nhất: giữ app sống (Immortal) + LUÔN ép popup/banner. Không có tweak phụ. Hold icon app → Bật KeepAlive và để bật. Popup là tính năng cốt lõi, luôn bật khi app immortal.</string>
+			<string>Bật tweak. Hold icon app (Zalo…) → Bật KeepAlive để giữ nền + ép popup. Giống Immortalizer: để BẬT, đừng tắt. RootHide: convert deb bằng RootHide Patcher rồi cài Sileo + respring. Sau respring nếu load OK sẽ có alert KeepAlive.</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -30,7 +30,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>KHÔNG dùng chung Immortalizer (gỡ Immortalizer). Hold Zalo → Bật KeepAlive. Đừng tắt immortal app đó. Popup tự ép, không có nút tắt popup.</string>
+			<string>Không thấy trong Settings? Thiếu PreferenceLoader / chưa respring / deb chưa qua RootHide Patcher.</string>
 		</dict>
 	</array>
 	<key>title</key>
