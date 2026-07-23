@@ -172,29 +172,127 @@ static void KAShowLoadedToast(void) {
 }
 %end
 
+#pragma mark - ÉP BANNER
+// Immortal = scene foreground → iOS chặn banner, chỉ còn tiếng.
+// Cách: nói dối "không foreground" + ép presentation options + banner destination.
+
+static NSString *KAReqBundle(id req) {
+    if (!req) return nil;
+    @try {
+        if ([req respondsToSelector:@selector(sectionIdentifier)]) {
+            NSString *s = [req sectionIdentifier];
+            if (s.length) return s;
+        }
+        if ([req respondsToSelector:@selector(bulletin)]) {
+            id b = [req bulletin];
+            if ([b respondsToSelector:@selector(sectionID)]) {
+                NSString *s = [b sectionID];
+                if (s.length) return s;
+            }
+        }
+    } @catch (__unused id e) {}
+    return nil;
+}
+
 %hook UNSUserNotificationServer
-- (void)willPresentNotification:(id)notif
-            forBundleIdentifier:(NSString *)bundle
-          withCompletionHandler:(id)handler {
-    if ([[KAConfig shared] isImmortal:bundle]) {
-        [self _didChangeApplicationState:4 forBundleIdentifier:bundle];
-        void (^orig)(NSUInteger) = handler;
-        void (^forced)(NSUInteger) = ^(NSUInteger options) {
-            if (orig) orig(options | KA_PRESENT_ALL);
-        };
-        %orig(notif, bundle, forced);
+
+- (BOOL)_isApplicationForeground:(NSString *)bundle {
+    if (bundle && [[KAConfig shared] isImmortal:bundle])
+        return NO;
+    return %orig;
+}
+
+- (BOOL)isApplicationForeground:(NSString *)bundle {
+    if (bundle && [[KAConfig shared] isImmortal:bundle])
+        return NO;
+    return %orig;
+}
+
+- (void)_didChangeApplicationState:(unsigned)state forBundleIdentifier:(NSString *)bundle {
+    // 8 = foreground-ish — chặn, ghi 4 (inactive) cho app immortal
+    if (bundle && [[KAConfig shared] isImmortal:bundle] && (state == 8 || state == 2)) {
+        %orig(4, bundle);
         return;
     }
     %orig;
 }
+
+- (void)willPresentNotification:(id)notif
+            forBundleIdentifier:(NSString *)bundle
+          withCompletionHandler:(id)handler {
+    if (bundle && [[KAConfig shared] isImmortal:bundle]) {
+        // Gọi IMP gốc _didChangeApplicationState:4 trực tiếp tránh recursion hook
+        [self _didChangeApplicationState:4 forBundleIdentifier:bundle];
+        void (^origH)(NSUInteger) = handler;
+        void (^forcedH)(NSUInteger) = ^(NSUInteger options) {
+            // Banner(16)+List(8)+Sound(2)+Badge(1)+Alert(4)
+            if (origH) origH(options | KA_PRESENT_ALL);
+        };
+        %orig(notif, bundle, forcedH);
+        return;
+    }
+    %orig;
+}
+
 %end
 
+%hook SBNotificationBannerDestination
+
+- (BOOL)canReceiveNotificationRequest:(id)req {
+    NSString *bid = KAReqBundle(req);
+    if (bid && [[KAConfig shared] isImmortal:bid])
+        return YES;
+    return %orig;
+}
+
+- (void)postNotificationRequest:(id)req {
+    %orig;
+}
+
+%end
+
+%hook NCNotificationDispatcher
+
+- (BOOL)destination:(id)dest canReceiveNotificationRequest:(id)req {
+    NSString *bid = KAReqBundle(req);
+    if (bid && [[KAConfig shared] isImmortal:bid])
+        return YES;
+    return %orig;
+}
+
+%end
+
+%hook UNSApplicationForegroundMonitor
+
+- (BOOL)isApplicationForeground:(NSString *)bundle {
+    if (bundle && [[KAConfig shared] isImmortal:bundle])
+        return NO;
+    return %orig;
+}
+
+%end
+
+// Timer: giữ notification state = not-foreground cho app immortal
 %hook SpringBoard
 - (void)applicationDidFinishLaunching:(id)app {
     %orig;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        KAShowLoadedToast();
+    NSLog(@"[KeepAlive] force-banner hooks active");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(__unused NSTimer *t) {
+            KAConfig *cfg = [KAConfig shared];
+            if (!cfg.enabled) return;
+            id server = [%c(UNSUserNotificationServer) sharedInstance];
+            if (!server) return;
+            for (NSString *bid in [cfg immortalIDs]) {
+                if ([server respondsToSelector:@selector(_didChangeApplicationState:forBundleIdentifier:)]) {
+                    // 4 = not foreground for banners
+                    ((void (*)(id, SEL, unsigned, id))objc_msgSend)(
+                        server,
+                        @selector(_didChangeApplicationState:forBundleIdentifier:),
+                        4, bid);
+                }
+            }
+        }];
     });
 }
 %end
