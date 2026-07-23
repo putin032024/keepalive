@@ -1,5 +1,4 @@
 # 1 bản rootless — Dopamine + RootHide
-# Setup Theos thủ công (beerpiss/theos-action toolchain cũ đã hỏng)
 name: Build
 
 on:
@@ -26,34 +25,29 @@ jobs:
         id: cache-theos
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ env.THEOS }}
-          key: theos-linux-v2.3.0-sdks-${{ hashFiles('.github/workflows/build.yml') }}
+          path: ${{ env.THEOS }}
+          key: theos-v3-toolchain-5.8-sdks-${{ runner.os }}
 
       - name: Install Theos + toolchain + SDKs
         if: steps.cache-theos.outputs.cache-hit != 'true'
         run: |
           set -eux
+          rm -rf "$THEOS"
           git clone --depth=1 --recursive https://github.com/theos/theos.git "$THEOS"
           mkdir -p "$THEOS/toolchain"
           curl -fL --retry 3 -o /tmp/toolchain.tar.xz \
             "https://github.com/kabiroberai/swift-toolchain-linux/releases/download/v2.3.0/swift-5.8-ubuntu22.04.tar.xz"
           tar -xJf /tmp/toolchain.tar.xz -C "$THEOS/toolchain"
-          # layout: toolchain/linux/iphone often expected
-          if [ ! -d "$THEOS/toolchain/linux/iphone" ]; then
-            # v2.3 tarball may extract as linux/iphone already under toolchain
-            ls -la "$THEOS/toolchain"
-            find "$THEOS/toolchain" -maxdepth 3 -type d | head -40
-          fi
-          # SDKs
+          ls -la "$THEOS/toolchain"
+          # SDKs: theos repo may already have empty sdks/ dir
+          rm -rf "$THEOS/sdks"
           git clone --depth=1 https://github.com/theos/sdks.git "$THEOS/sdks"
-          ls "$THEOS/sdks" | head
+          ls "$THEOS/sdks"
 
       - name: Build KeepAlive (rootless)
         run: |
           set -eux
           export PATH="$THEOS/bin:$PATH"
-          # drop arm64e if toolchain lacks it (Makefile already arm64 only)
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless -j"$(nproc)"
           ls -lah packages/
